@@ -45,7 +45,7 @@ const OrdersPage = () => {
     invoiceNumber: '',
     customerId: '',
     customerName: '',
-    amount: '$0.00',
+    amount: '',
     issueDate: '',
     dueDate: '',
     status: 'Sent' as InvoiceStatus,
@@ -109,7 +109,7 @@ const OrdersPage = () => {
       invoiceNumber: '',
       customerId: '',
       customerName: '',
-      amount: '$0.00',
+      amount: '',
       issueDate: '',
       dueDate: '',
       status: 'Sent',
@@ -248,7 +248,7 @@ const OrdersPage = () => {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Invoice #, customer, notes"
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
+                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
               />
             </label>
             <label className="block text-sm text-slate-300">
@@ -375,7 +375,8 @@ const OrdersPage = () => {
               <input
                 value={form.invoiceNumber}
                 onChange={(event) => setForm((prev) => ({ ...prev, invoiceNumber: event.target.value }))}
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
+                placeholder="e.g. INV-2026-001"
+                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
               />
             </label>
             <label className="block text-sm text-slate-300">
@@ -404,7 +405,7 @@ const OrdersPage = () => {
                   value={form.customerName}
                   onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
                   placeholder="Enter customer name"
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
+                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
                 />
               )}
             </label>
@@ -413,8 +414,8 @@ const OrdersPage = () => {
               <input
                 value={form.amount}
                 onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
-                placeholder="$1,200.00"
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
+                placeholder="$0.00"
+                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
               />
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -465,7 +466,7 @@ const OrdersPage = () => {
               <textarea
                 value={form.notes}
                 onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
+                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
               />
             </label>
             <div className="flex flex-wrap gap-3">
