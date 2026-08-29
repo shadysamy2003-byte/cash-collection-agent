@@ -1,23 +1,24 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useAppData } from '../context/AppDataContext';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 
 const ReportsPage = () => {
-  const { orders, inventory, metrics, reportData, customerInsights, forecastData } = useAppData();
+  const { orders, reportData, customerInsights, forecastData } = useAppData();
+  const [toastMessage, setToastMessage] = useState('');
 
   const overdueCustomers = useMemo(() => reportData.topOverdueCustomers, [reportData]);
 
   const customerRiskCount = useMemo(
-  () =>
-    customerInsights.filter(
-      (customer) =>
-        customer.riskScore === 'High' &&
-        Number(customer.outstandingBalance.replace(/[^0-9.-]/g, '')) > 0
-    ).length,
-  [customerInsights]
-);
+    () =>
+      customerInsights.filter(
+        (customer) =>
+          customer.riskScore === 'High' &&
+          Number(customer.outstandingBalance.replace(/[^0-9.-]/g, '')) > 0
+      ).length,
+    [customerInsights]
+  );
 
   const dueSoonCount = useMemo(
     () => orders.filter((invoice) => invoice.status === 'Due Soon').length,
@@ -28,8 +29,45 @@ const ReportsPage = () => {
     [orders]
   );
 
+  // Export to CSV Function
+  const handleExportCSV = () => {
+    const headers = ['Customer Name', 'Overdue Amount', 'Overdue Invoices Count', 'Status'];
+    const rows = overdueCustomers.map((c: any) => [
+      `"${c.customerName}"`,
+      `"${c.overdueAmount}"`,
+      c.overdueCount,
+      '"Overdue"'
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((row: (string | number)[]) => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `financial-report-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setToastMessage('📊 Financial report exported to CSV successfully!');
+    setTimeout(() => setToastMessage(''), 4000);
+  };
+
+  // Export to PDF / Print Function
+  const handleExportPDF = () => {
+    window.print();
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/90 px-6 py-4 text-emerald-200 shadow-2xl shadow-black backdrop-blur-xl animate-bounce">
+          <span className="text-xl">✅</span>
+          <p className="text-sm font-semibold">{toastMessage}</p>
+        </div>
+      )}
+
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -37,9 +75,22 @@ const ReportsPage = () => {
             <h1 className="mt-3 text-3xl font-semibold text-white">Receivables analytics and cash flow reporting</h1>
             <p className="mt-3 max-w-2xl text-sm text-slate-400">Review overdue exposure, customer risk, and collection performance with actionable finance reports.</p>
           </div>
-          <button className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-400">
-            Export PDF
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="rounded-2xl border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm font-semibold text-white transition hover:border-brand-500 hover:bg-slate-800"
+            >
+              Export CSV
+            </button>
+            <button
+              type="button"
+              onClick={handleExportPDF}
+              className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-500/30 transition hover:bg-brand-400"
+            >
+              Export PDF
+            </button>
+          </div>
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
@@ -128,20 +179,20 @@ const ReportsPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800 bg-slate-950/95">
-             {overdueCustomers.length === 0 ? (
-  <tr>
-    <td colSpan={4} className="px-6 py-6 text-center text-sm text-slate-400">No overdue customer accounts at the moment.</td>
-  </tr>
-) : (
-  overdueCustomers.map((customer: any) => (
-    <tr key={customer.customerName} className="hover:bg-slate-900/90">
-      <td className="px-6 py-5 text-slate-200">{customer.customerName}</td>
-      <td className="px-6 py-5 text-slate-300">{customer.overdueAmount}</td>
-      <td className="px-6 py-5 text-slate-300">{customer.overdueCount}</td>
-      <td className="px-6 py-5 text-slate-300">&mdash;</td>
-    </tr>
-  ))
-)}
+              {overdueCustomers.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-6 text-center text-sm text-slate-400">No overdue customer accounts at the moment.</td>
+                </tr>
+              ) : (
+                overdueCustomers.map((customer: any) => (
+                  <tr key={customer.customerName} className="hover:bg-slate-900/90">
+                    <td className="px-6 py-5 text-slate-200">{customer.customerName}</td>
+                    <td className="px-6 py-5 text-slate-300">{customer.overdueAmount}</td>
+                    <td className="px-6 py-5 text-slate-300">{customer.overdueCount}</td>
+                    <td className="px-6 py-5 text-emerald-400 font-semibold">Action Required</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
