@@ -4,17 +4,19 @@ import { useAppData } from '../context/AppDataContext';
 const plans = [
   {
     title: 'Starter',
-    priceMonthly: 29,
-    priceAnnual: 23,
+    priceMonthly: 450,
+    priceAnnual: 360,
+    currency: 'EGP',
     description: 'For small teams that need reliable invoice collection',
     features: ['Invoice tracking', 'Due date reminders', 'Customer risk scores'],
     popular: false,
-    checkoutUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/9cfbafc6-714c-427c-900b-70427e0b21d1'
+    checkoutUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/060f698d-6514-4f12-967b-c6e5a1360613'
   },
   {
     title: 'Growth',
-    priceMonthly: 79,
-    priceAnnual: 63,
+    priceMonthly: 1400,
+    priceAnnual: 1120,
+    currency: 'EGP',
     description: 'For growing businesses with recurring receivables',
     features: ['Cash flow forecasting', 'Priority collections', 'Team workflows'],
     popular: true,
@@ -22,12 +24,13 @@ const plans = [
   },
   {
     title: 'Enterprise',
-    priceMonthly: 149,
-    priceAnnual: 119,
+    priceMonthly: 3500,
+    priceAnnual: 2800,
+    currency: 'EGP',
     description: 'For finance teams that need scale and automation',
     features: ['Dedicated onboarding', 'Custom integrations', 'Priority support'],
     popular: false,
-    checkoutUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/9cfbafc6-714c-427c-900b-70427e0b21d1'
+    checkoutUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/0e3d8efc-0735-44bf-8597-e72a277479d7'
   }
 ];
 
@@ -36,7 +39,6 @@ const PricingPage = () => {
   const { user } = useAppData();
 
   const handleCheckout = (checkoutUrl: string) => {
-    // إضافة إيميل المستخدم للرابط لتعبئته تلقائياً في صفحة الدفع
     const url = new URL(checkoutUrl);
     if (user?.email) {
       url.searchParams.set('checkout[email]', user.email);
@@ -102,11 +104,11 @@ const PricingPage = () => {
                 <div>
                   <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{plan.title}</p>
                   <div className="mt-4 flex items-baseline gap-1.5">
-                    <span className="text-5xl font-semibold text-white">${currentPrice}</span>
+                    <span className="text-4xl font-semibold text-white">{currentPrice.toLocaleString()} {plan.currency}</span>
                     <span className="text-sm font-medium text-slate-400">/ month</span>
                   </div>
                   {isAnnual && (
-                    <p className="mt-1 text-xs text-emerald-400 font-medium">Billed annually (${currentPrice * 12}/year)</p>
+                    <p className="mt-1 text-xs text-emerald-400 font-medium">Billed annually ({(currentPrice * 12).toLocaleString()} {plan.currency}/year)</p>
                   )}
                   <p className="mt-3 text-sm text-slate-400">{plan.description}</p>
 
