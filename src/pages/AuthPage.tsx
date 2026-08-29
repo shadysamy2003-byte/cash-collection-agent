@@ -1,16 +1,25 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAppData } from '../context/AppDataContext';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
 
 const AuthPage = ({ mode }: { mode: AuthMode }) => {
   const navigate = useNavigate();
+  const { user } = useAppData();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  // التحويل التلقائي للداشبورد في حال كان المستخدم مسجل دخول بالفعل
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -19,7 +28,7 @@ const AuthPage = ({ mode }: { mode: AuthMode }) => {
 
     try {
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -27,16 +36,30 @@ const AuthPage = ({ mode }: { mode: AuthMode }) => {
           }
         });
         if (error) throw error;
-        setMessage('Registration successful! Please check your email for verification.');
-        setTimeout(() => navigate('/dashboard'), 1500);
+
+        // إذا تم إنشاء جلسة فورية يتم نقله للداشبورد مباشرة
+        if (data.session) {
+          navigate('/dashboard', { replace: true });
+        } else {
+          // تسجيل دخول تلقائي فوري إن كان تأكيد الإيميل غير مطلوب
+          const { error: loginErr } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (!loginErr) {
+            navigate('/dashboard', { replace: true });
+          } else {
+            setMessage('Registration successful! Please sign in.');
+            setTimeout(() => navigate('/dashboard', { replace: true }), 1000);
+          }
+        }
       } else if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
-        setMessage('Signed in successfully!');
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
       } else {
         // Forgot password mode
         if (!email.trim()) {
@@ -116,7 +139,7 @@ const AuthPage = ({ mode }: { mode: AuthMode }) => {
             {loading ? 'Processing...' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
           </button>
         </form>
-        {message && <p className="mt-4 rounded-3xl bg-slate-950/70 px-4 py-3 text-sm text-slate-200">{message}</p>}
+        {message && <p className="mt-4 rounded-3xl bg-slate-950/70 px-4 py-3 text-sm text-slate-200 text-center">{message}</p>}
         <div className="mt-6 flex flex-col gap-3 text-center text-sm text-slate-400">
           {mode === 'login' ? (
             <>
