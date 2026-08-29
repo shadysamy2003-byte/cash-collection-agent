@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
 
 const plans = [
@@ -42,6 +42,18 @@ const PricingPage = () => {
 
   const { user } = useAppData();
 
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    if (selectedPlan) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [selectedPlan]);
+
   const handleSelectPlan = (plan: any) => {
     setSelectedPlan(plan);
     setCardNumber('');
@@ -83,7 +95,7 @@ const PricingPage = () => {
     <div className="space-y-10 relative">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/90 px-6 py-4 text-emerald-200 shadow-2xl shadow-black backdrop-blur-xl animate-bounce">
+        <div className="fixed top-6 right-6 z-[999999] flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/95 px-6 py-4 text-emerald-200 shadow-2xl shadow-black backdrop-blur-xl animate-bounce">
           <span className="text-xl">✅</span>
           <p className="text-sm font-semibold">{toastMessage}</p>
         </div>
@@ -182,15 +194,15 @@ const PricingPage = () => {
         })}
       </section>
 
-      {/* Credit Card Checkout Modal - Perfect Centering & Full Isolation */}
+      {/* Credit Card Checkout Modal - Solid Overlay & Superior Z-Index */}
       {selectedPlan && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 sm:p-6 backdrop-blur-lg">
-          <div className="relative w-full max-w-md rounded-[2rem] border border-slate-700/80 bg-slate-900 p-6 sm:p-8 shadow-[0_0_60px_rgba(0,0,0,0.9)] animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#070b14]/95 p-4 backdrop-blur-xl">
+          <div className="relative w-full max-w-md rounded-3xl border border-slate-700/80 bg-[#0f172a] p-6 sm:p-8 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)]">
             {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-slate-800/80 pb-4">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
               <div>
                 <span className="text-[11px] uppercase tracking-widest text-brand-400 font-bold">Secure Checkout</span>
-                <h3 className="text-lg font-bold text-white mt-0.5">Upgrade to {selectedPlan.title}</h3>
+                <h3 className="text-xl font-bold text-white mt-1">Upgrade to {selectedPlan.title}</h3>
               </div>
               <button
                 type="button"
@@ -202,27 +214,27 @@ const PricingPage = () => {
             </div>
 
             {/* Order Summary Box */}
-            <div className="mt-4 rounded-2xl bg-slate-950 p-3.5 border border-slate-800/80">
+            <div className="mt-4 rounded-2xl bg-[#070b14] p-4 border border-slate-800">
               <div className="flex justify-between text-xs text-slate-400">
                 <span>Account:</span>
                 <span className="text-slate-200 font-medium">{user?.email || 'shady@orderflow.com'}</span>
               </div>
-              <div className="mt-1.5 flex justify-between text-xs text-slate-400">
+              <div className="mt-2 flex justify-between text-xs text-slate-400">
                 <span>Billing Cycle:</span>
                 <span className="text-slate-200">{isAnnual ? 'Annual (20% Off)' : 'Monthly'}</span>
               </div>
-              <div className="mt-2.5 flex justify-between border-t border-slate-800/80 pt-2.5 text-sm font-bold text-white">
+              <div className="mt-3 flex justify-between border-t border-slate-800 pt-3 text-sm font-bold text-white">
                 <span>Total Due:</span>
-                <span className="text-emerald-400">
+                <span className="text-emerald-400 font-mono text-base">
                   ${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00
                 </span>
               </div>
             </div>
 
             {/* Card Payment Form */}
-            <form onSubmit={handleConfirmSubscription} className="mt-4 space-y-3.5">
+            <form onSubmit={handleConfirmSubscription} className="mt-5 space-y-4">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                   Cardholder Name
                 </label>
                 <input
@@ -231,12 +243,12 @@ const PricingPage = () => {
                   placeholder="e.g. Shady Samy"
                   value={cardHolder}
                   onChange={(e) => setCardHolder(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
+                  className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                   Card Number
                 </label>
                 <div className="relative">
@@ -246,7 +258,7 @@ const PricingPage = () => {
                     placeholder="4000 1234 5678 9010"
                     value={cardNumber}
                     onChange={handleCardNumberChange}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none font-mono"
+                    className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none font-mono"
                   />
                   <span className="absolute right-3.5 top-2.5 text-xs text-slate-400">💳</span>
                 </div>
@@ -254,7 +266,7 @@ const PricingPage = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                     Expiry Date
                   </label>
                   <input
@@ -263,11 +275,11 @@ const PricingPage = () => {
                     placeholder="MM/YY"
                     value={expiry}
                     onChange={handleExpiryChange}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
+                    className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                     CVC / CVV
                   </label>
                   <input
@@ -277,24 +289,24 @@ const PricingPage = () => {
                     placeholder="123"
                     value={cvc}
                     onChange={(e) => setCvc(e.target.value.replace(/\D/g, ''))}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
+                    className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
                   />
                 </div>
               </div>
 
-              <div className="mt-6 flex gap-2.5 pt-2">
+              <div className="mt-6 flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setSelectedPlan(null)}
                   disabled={isProcessing}
-                  className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-slate-700 transition"
+                  className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-3 text-xs font-semibold text-white hover:bg-slate-700 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-3.5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400 transition disabled:opacity-50"
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-3.5 py-3 text-xs font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400 transition disabled:opacity-50"
                 >
                   {isProcessing ? (
                     <>
