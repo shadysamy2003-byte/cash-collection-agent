@@ -182,27 +182,27 @@ const PricingPage = () => {
         })}
       </section>
 
-      {/* Credit Card Checkout Modal - Centered and Non-Clipping */}
+      {/* Credit Card Checkout Modal - Perfect Centering & Full Isolation */}
       {selectedPlan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/85 p-4 sm:p-6 backdrop-blur-md">
-          <div className="relative w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:p-8 shadow-2xl my-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 sm:p-6 backdrop-blur-lg">
+          <div className="relative w-full max-w-md rounded-[2rem] border border-slate-700/80 bg-slate-900 p-6 sm:p-8 shadow-[0_0_60px_rgba(0,0,0,0.9)] animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-800/80 pb-4">
               <div>
-                <span className="text-[11px] uppercase tracking-widest text-brand-300 font-bold">Secure Checkout</span>
+                <span className="text-[11px] uppercase tracking-widest text-brand-400 font-bold">Secure Checkout</span>
                 <h3 className="text-lg font-bold text-white mt-0.5">Upgrade to {selectedPlan.title}</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedPlan(null)}
-                className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-800 text-slate-400 transition hover:bg-slate-700 hover:text-white"
               >
                 ✕
               </button>
             </div>
 
             {/* Order Summary Box */}
-            <div className="mt-4 rounded-2xl bg-slate-950/90 p-3.5 border border-slate-800/80">
+            <div className="mt-4 rounded-2xl bg-slate-950 p-3.5 border border-slate-800/80">
               <div className="flex justify-between text-xs text-slate-400">
                 <span>Account:</span>
                 <span className="text-slate-200 font-medium">{user?.email || 'shady@orderflow.com'}</span>
@@ -213,7 +213,7 @@ const PricingPage = () => {
               </div>
               <div className="mt-2.5 flex justify-between border-t border-slate-800/80 pt-2.5 text-sm font-bold text-white">
                 <span>Total Due:</span>
-                <span className="text-emerald-400 font-semibold">
+                <span className="text-emerald-400">
                   ${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00
                 </span>
               </div>
@@ -248,7 +248,7 @@ const PricingPage = () => {
                     onChange={handleCardNumberChange}
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none font-mono"
                   />
-                  <span className="absolute right-3.5 top-2.5 text-xs text-slate-400 font-mono">💳</span>
+                  <span className="absolute right-3.5 top-2.5 text-xs text-slate-400">💳</span>
                 </div>
               </div>
 
@@ -287,14 +287,14 @@ const PricingPage = () => {
                   type="button"
                   onClick={() => setSelectedPlan(null)}
                   disabled={isProcessing}
-                  className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-3 text-xs font-semibold text-white hover:bg-slate-700 transition"
+                  className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-slate-700 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-3.5 py-3 text-xs font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400 transition disabled:opacity-50"
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-3.5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400 transition disabled:opacity-50"
                 >
                   {isProcessing ? (
                     <>
