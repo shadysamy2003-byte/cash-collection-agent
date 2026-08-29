@@ -64,7 +64,7 @@ const App = () => {
                       : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
                   }`}>
                     <span className={`h-2 w-2 rounded-full ${user.isTrialExpired ? 'bg-rose-400' : 'bg-amber-400 animate-pulse'}`} />
-                    {user.isTrialExpired ? 'Trial Expired' : `${user.trialDaysLeft} days left in trial`}
+                    {user.isTrialExpired ? 'Trial Expired' : '7 days left in trial'}
                   </span>
                 )}
 
