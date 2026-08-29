@@ -4,10 +4,10 @@ import { useAppData } from '../context/AppDataContext';
 const plans = [
   {
     title: 'Starter',
-    priceMonthly: 450,
-    priceAnnualMonthlyEquivalent: 360,
-    annualTotal: 4320,
-    currency: 'EGP',
+    priceMonthly: 9,
+    priceAnnualMonthlyEquivalent: 7.2,
+    annualTotal: 86.4,
+    currency: '$',
     description: 'For small teams that need reliable invoice collection',
     features: ['Invoice tracking', 'Due date reminders', 'Customer risk scores'],
     popular: false,
@@ -16,10 +16,10 @@ const plans = [
   },
   {
     title: 'Growth',
-    priceMonthly: 1400,
-    priceAnnualMonthlyEquivalent: 1120,
-    annualTotal: 13440,
-    currency: 'EGP',
+    priceMonthly: 29,
+    priceAnnualMonthlyEquivalent: 23.2,
+    annualTotal: 278.4,
+    currency: '$',
     description: 'For growing businesses with recurring receivables',
     features: ['Cash flow forecasting', 'Priority collections', 'Team workflows'],
     popular: true,
@@ -28,10 +28,10 @@ const plans = [
   },
   {
     title: 'Enterprise',
-    priceMonthly: 3500,
-    priceAnnualMonthlyEquivalent: 2800,
-    annualTotal: 33600,
-    currency: 'EGP',
+    priceMonthly: 79,
+    priceAnnualMonthlyEquivalent: 63.2,
+    annualTotal: 758.4,
+    currency: '$',
     description: 'For finance teams that need scale and automation',
     features: ['Dedicated onboarding', 'Custom integrations', 'Priority support'],
     popular: false,
@@ -112,11 +112,15 @@ const PricingPage = () => {
                 <div>
                   <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{plan.title}</p>
                   <div className="mt-4 flex items-baseline gap-1.5">
-                    <span className="text-4xl font-semibold text-white">{displayPrice.toLocaleString()} {plan.currency}</span>
+                    <span className="text-4xl font-semibold text-white">
+                      {plan.currency}{displayPrice}
+                    </span>
                     <span className="text-sm font-medium text-slate-400">/ month</span>
                   </div>
                   {isAnnual && (
-                    <p className="mt-1 text-xs text-emerald-400 font-medium">Billed annually ({plan.annualTotal.toLocaleString()} {plan.currency}/year)</p>
+                    <p className="mt-1 text-xs text-emerald-400 font-medium">
+                      Billed annually ({plan.currency}{plan.annualTotal}/year)
+                    </p>
                   )}
                   <p className="mt-3 text-sm text-slate-400">{plan.description}</p>
 
