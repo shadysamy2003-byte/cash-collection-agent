@@ -217,7 +217,9 @@ const AssistantPage = () => {
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-2xl bg-slate-800/80 px-3 py-2 text-sm text-slate-300">Live Engine</span>
             <a
-              href="mailto:cashcollectionsupport@gmail.com?subject=Cash%20Collection%20Agent%20-%20Support%20Request"
+              href="https://mail.google.com/mail/?view=cm&fs=1&to=cashcollectionsupport@gmail.com&su=Cash%20Collection%20Agent%20-%20Support%20Request"
+              target="_blank"
+              rel="noreferrer"
               className="rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-200 transition hover:border-brand-500 hover:text-white"
             >
               Contact Support
