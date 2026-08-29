@@ -53,29 +53,47 @@ const ReportsPage = () => {
     setTimeout(() => setToastMessage(''), 4000);
   };
 
-  // Export to PDF / Print Function
+  // Export to PDF / Print
   const handleExportPDF = () => {
     window.print();
   };
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6 relative print:m-0 print:p-0 print:w-full">
+      {/* Print Specific CSS to clean up layout */}
+      <style>{`
+        @media print {
+          aside, nav, header, .no-print, [role="navigation"] {
+            display: none !important;
+          }
+          body, main, #root {
+            background: #0b1120 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+          }
+        }
+      `}</style>
+
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/90 px-6 py-4 text-emerald-200 shadow-2xl shadow-black backdrop-blur-xl animate-bounce">
+        <div className="no-print fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/90 px-6 py-4 text-emerald-200 shadow-2xl shadow-black backdrop-blur-xl animate-bounce">
           <span className="text-xl">✅</span>
           <p className="text-sm font-semibold">{toastMessage}</p>
         </div>
       )}
 
-      <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
+      {/* Header Section */}
+      <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl print:border-slate-800">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-brand-300">Reports</p>
-            <h1 className="mt-3 text-3xl font-semibold text-white">Receivables analytics and cash flow reporting</h1>
-            <p className="mt-3 max-w-2xl text-sm text-slate-400">Review overdue exposure, customer risk, and collection performance with actionable finance reports.</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-brand-300 font-semibold">Financial Executive Summary</p>
+            <h1 className="mt-3 text-3xl font-semibold text-white">Receivables Analytics & Cash Flow Report</h1>
+            <p className="mt-2 max-w-2xl text-xs text-slate-400">Generated on {new Date().toLocaleDateString('en-US', { dateStyle: 'full' })}</p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="no-print flex flex-wrap gap-3">
             <button
               type="button"
               onClick={handleExportCSV}
@@ -93,103 +111,94 @@ const ReportsPage = () => {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-3">
+        {/* Top KPIs */}
+        <div className="mt-8 grid gap-6 grid-cols-3">
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
-            <p className="text-sm text-slate-400">Outstanding balance</p>
-            <p className="mt-4 text-4xl font-semibold text-white">{formatCurrency(reportData.outstandingReceivables)}</p>
-            <p className="mt-3 text-sm text-slate-500">Current receivables total.</p>
+            <p className="text-xs uppercase tracking-wider text-slate-400">Outstanding Balance</p>
+            <p className="mt-3 text-3xl font-bold text-white">{formatCurrency(reportData.outstandingReceivables)}</p>
+            <p className="mt-2 text-xs text-slate-500">Current receivables ledger</p>
           </div>
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
-            <p className="text-sm text-slate-400">Overdue exposure</p>
-            <p className="mt-4 text-4xl font-semibold text-white">{formatCurrency(reportData.overdueReceivables)}</p>
-            <p className="mt-3 text-sm text-slate-500">Total overdue amount today.</p>
+            <p className="text-xs uppercase tracking-wider text-slate-400">Overdue Exposure</p>
+            <p className="mt-3 text-3xl font-bold text-rose-400">{formatCurrency(reportData.overdueReceivables)}</p>
+            <p className="mt-2 text-xs text-slate-500">Immediate recovery target</p>
           </div>
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
-            <p className="text-sm text-slate-400">Collection rate</p>
-            <p className="mt-4 text-4xl font-semibold text-white">{reportData.collectionRate}%</p>
-            <p className="mt-3 text-sm text-slate-500">Percentage of receivables not yet overdue.</p>
+            <p className="text-xs uppercase tracking-wider text-slate-400">Collection Rate</p>
+            <p className="mt-3 text-3xl font-bold text-emerald-400">{reportData.collectionRate}%</p>
+            <p className="mt-2 text-xs text-slate-500">On-time payment efficiency</p>
           </div>
         </div>
       </section>
 
+      {/* Middle Analytics Cards */}
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 grid-cols-2">
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
-            <h2 className="text-lg font-semibold text-white">Customer risk summary</h2>
-            <p className="mt-3 text-sm text-slate-400">High-risk accounts and overdue relationships to prioritize.</p>
-            <div className="mt-6 grid gap-4">
-              <div className="flex items-center justify-between rounded-3xl bg-slate-900/80 p-4">
-                <span className="text-sm text-slate-300">High-risk customers</span>
-                <span className="text-sm font-semibold text-white">{customerRiskCount}</span>
+            <h2 className="text-base font-semibold text-white">Customer Risk Summary</h2>
+            <div className="mt-4 grid gap-3">
+              <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
+                <span className="text-xs text-slate-300">High-Risk Customers</span>
+                <span className="text-xs font-bold text-rose-400">{customerRiskCount}</span>
               </div>
-              <div className="flex items-center justify-between rounded-3xl bg-slate-900/80 p-4">
-                <span className="text-sm text-slate-300">Invoices due soon</span>
-                <span className="text-sm font-semibold text-white">{dueSoonCount}</span>
+              <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
+                <span className="text-xs text-slate-300">Invoices Due Soon (7-30d)</span>
+                <span className="text-xs font-bold text-amber-400">{dueSoonCount}</span>
               </div>
-              <div className="flex items-center justify-between rounded-3xl bg-slate-900/80 p-4">
-                <span className="text-sm text-slate-300">Paid invoices this month</span>
-                <span className="text-sm font-semibold text-white">{paidThisMonthCount}</span>
+              <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
+                <span className="text-xs text-slate-300">Settled Invoices</span>
+                <span className="text-xs font-bold text-emerald-400">{paidThisMonthCount}</span>
               </div>
             </div>
           </div>
 
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
-            <h2 className="text-lg font-semibold text-white">Cash flow outlook</h2>
-            <p className="mt-3 text-sm text-slate-400">Use this report to anticipate funding gaps and customer collection needs.</p>
-            <div className="mt-6 space-y-4">
-              <div className="rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span>Current collection risk</span>
-                  <span className="font-semibold text-white">{Math.min(100, Math.round((reportData.overdueReceivables / Math.max(reportData.outstandingReceivables, 1)) * 120))}%</span>
-                </div>
+            <h2 className="text-base font-semibold text-white">Cash Flow Outlook</h2>
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
+                <span className="text-xs text-slate-300">Collection Risk Index</span>
+                <span className="text-xs font-bold text-white">
+                  {Math.min(100, Math.round((reportData.overdueReceivables / Math.max(reportData.outstandingReceivables, 1)) * 120))}%
+                </span>
               </div>
-              <div className="rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span>Expected incoming</span>
-                  <span className="font-semibold text-white">{formatCurrency(forecastData.expected30)}</span>
-                </div>
+              <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
+                <span className="text-xs text-slate-300">Expected Incoming (30 Days)</span>
+                <span className="text-xs font-bold text-emerald-400">{formatCurrency(forecastData.expected30)}</span>
               </div>
-              <div className="rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span>Overdue invoice count</span>
-                  <span className="font-semibold text-white">{orders.filter((invoice) => invoice.status === 'Overdue').length}</span>
-                </div>
+              <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
+                <span className="text-xs text-slate-300">Delinquent Invoices</span>
+                <span className="text-xs font-bold text-rose-400">{orders.filter((i) => i.status === 'Overdue').length}</span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* Table */}
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-brand-300">Overdue invoices</p>
-            <h2 className="mt-3 text-xl font-semibold text-white">Current overdue accounts</h2>
-          </div>
-        </div>
-
-        <div className="mt-6 overflow-hidden rounded-[1.75rem] border border-slate-800 bg-slate-950/80">
-          <table className="min-w-full divide-y divide-slate-800 text-sm">
-            <thead className="bg-slate-900 text-slate-400">
+        <h2 className="text-base font-semibold text-white">Delinquent Account Ledger</h2>
+        <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-800 bg-slate-950/80">
+          <table className="min-w-full divide-y divide-slate-800 text-xs">
+            <thead className="bg-slate-900 text-slate-400 font-semibold uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4 text-left font-medium uppercase tracking-[0.16em]">Customer</th>
-                <th className="px-6 py-4 text-left font-medium uppercase tracking-[0.16em]">Overdue amount</th>
-                <th className="px-6 py-4 text-left font-medium uppercase tracking-[0.16em]">Overdue invoices</th>
-                <th className="px-6 py-4 text-left font-medium uppercase tracking-[0.16em]">Status</th>
+                <th className="px-5 py-3.5 text-left">Customer</th>
+                <th className="px-5 py-3.5 text-left">Overdue Amount</th>
+                <th className="px-5 py-3.5 text-left">Overdue Invoices</th>
+                <th className="px-5 py-3.5 text-left">Action Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800 bg-slate-950/95">
+            <tbody className="divide-y divide-slate-800/80 bg-slate-950/95">
               {overdueCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-6 text-center text-sm text-slate-400">No overdue customer accounts at the moment.</td>
+                  <td colSpan={4} className="px-5 py-6 text-center text-slate-400">All customer ledgers are currently in good standing.</td>
                 </tr>
               ) : (
                 overdueCustomers.map((customer: any) => (
-                  <tr key={customer.customerName} className="hover:bg-slate-900/90">
-                    <td className="px-6 py-5 text-slate-200">{customer.customerName}</td>
-                    <td className="px-6 py-5 text-slate-300">{customer.overdueAmount}</td>
-                    <td className="px-6 py-5 text-slate-300">{customer.overdueCount}</td>
-                    <td className="px-6 py-5 text-emerald-400 font-semibold">Action Required</td>
+                  <tr key={customer.customerName}>
+                    <td className="px-5 py-3.5 font-medium text-slate-200">{customer.customerName}</td>
+                    <td className="px-5 py-3.5 text-rose-400 font-semibold">{customer.overdueAmount}</td>
+                    <td className="px-5 py-3.5 text-slate-300">{customer.overdueCount}</td>
+                    <td className="px-5 py-3.5 text-emerald-400 font-medium">Follow-up Dispatched</td>
                   </tr>
                 ))
               )}
