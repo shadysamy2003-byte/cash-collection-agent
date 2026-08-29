@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppData } from '../context/AppDataContext';
 
 const plans = [
@@ -42,7 +43,6 @@ const PricingPage = () => {
 
   const { user } = useAppData();
 
-  // Prevent background scrolling when modal is open
   useEffect(() => {
     if (selectedPlan) {
       document.body.style.overflow = 'hidden';
@@ -194,137 +194,139 @@ const PricingPage = () => {
         })}
       </section>
 
-      {/* Credit Card Checkout Modal - Solid Overlay & Superior Z-Index */}
-      {selectedPlan && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#070b14]/95 p-4 backdrop-blur-xl">
-          <div className="relative w-full max-w-md rounded-3xl border border-slate-700/80 bg-[#0f172a] p-6 sm:p-8 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)]">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
-              <div>
-                <span className="text-[11px] uppercase tracking-widest text-brand-400 font-bold">Secure Checkout</span>
-                <h3 className="text-xl font-bold text-white mt-1">Upgrade to {selectedPlan.title}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedPlan(null)}
-                className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-800 text-slate-400 transition hover:bg-slate-700 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Order Summary Box */}
-            <div className="mt-4 rounded-2xl bg-[#070b14] p-4 border border-slate-800">
-              <div className="flex justify-between text-xs text-slate-400">
-                <span>Account:</span>
-                <span className="text-slate-200 font-medium">{user?.email || 'shady@orderflow.com'}</span>
-              </div>
-              <div className="mt-2 flex justify-between text-xs text-slate-400">
-                <span>Billing Cycle:</span>
-                <span className="text-slate-200">{isAnnual ? 'Annual (20% Off)' : 'Monthly'}</span>
-              </div>
-              <div className="mt-3 flex justify-between border-t border-slate-800 pt-3 text-sm font-bold text-white">
-                <span>Total Due:</span>
-                <span className="text-emerald-400 font-mono text-base">
-                  ${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00
-                </span>
-              </div>
-            </div>
-
-            {/* Card Payment Form */}
-            <form onSubmit={handleConfirmSubscription} className="mt-5 space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Cardholder Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Shady Samy"
-                  value={cardHolder}
-                  onChange={(e) => setCardHolder(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Card Number
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    placeholder="4000 1234 5678 9010"
-                    value={cardNumber}
-                    onChange={handleCardNumberChange}
-                    className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none font-mono"
-                  />
-                  <span className="absolute right-3.5 top-2.5 text-xs text-slate-400">💳</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+      {/* Credit Card Checkout Modal via React Portal */}
+      {selectedPlan &&
+        createPortal(
+          <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-950/98 p-4 backdrop-blur-2xl">
+            <div className="relative w-full max-w-md rounded-[2rem] border border-slate-800 bg-slate-900 p-6 sm:p-8 shadow-2xl">
+              {/* Modal Header */}
+              <div className="flex items-start justify-between border-b border-slate-800 pb-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    Expiry Date
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="MM/YY"
-                    value={expiry}
-                    onChange={handleExpiryChange}
-                    className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
-                  />
+                  <span className="text-[11px] uppercase tracking-widest text-brand-400 font-bold">Secure Checkout</span>
+                  <h3 className="text-xl font-bold text-white mt-1">Upgrade to {selectedPlan.title}</h3>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    CVC / CVV
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    maxLength={4}
-                    placeholder="123"
-                    value={cvc}
-                    onChange={(e) => setCvc(e.target.value.replace(/\D/g, ''))}
-                    className="w-full rounded-xl border border-slate-700 bg-[#070b14] px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setSelectedPlan(null)}
-                  disabled={isProcessing}
-                  className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-3 text-xs font-semibold text-white hover:bg-slate-700 transition"
+                  className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-800 text-slate-400 transition hover:bg-slate-700 hover:text-white"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-3.5 py-3 text-xs font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400 transition disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <>
-                      <svg className="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Processing...
-                    </>
-                  ) : (
-                    `Pay $${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00`
-                  )}
+                  ✕
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+
+              {/* Order Summary Box */}
+              <div className="mt-4 rounded-2xl bg-slate-950 p-4 border border-slate-800">
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Account:</span>
+                  <span className="text-slate-200 font-medium">{user?.email || 'shady@orderflow.com'}</span>
+                </div>
+                <div className="mt-2 flex justify-between text-xs text-slate-400">
+                  <span>Billing Cycle:</span>
+                  <span className="text-slate-200">{isAnnual ? 'Annual (20% Off)' : 'Monthly'}</span>
+                </div>
+                <div className="mt-3 flex justify-between border-t border-slate-800 pt-3 text-sm font-bold text-white">
+                  <span>Total Due:</span>
+                  <span className="text-emerald-400 font-mono text-base">
+                    ${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00
+                  </span>
+                </div>
+              </div>
+
+              {/* Card Payment Form */}
+              <form onSubmit={handleConfirmSubscription} className="mt-5 space-y-4">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Cardholder Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Shady Samy"
+                    value={cardHolder}
+                    onChange={(e) => setCardHolder(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Card Number
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="4000 1234 5678 9010"
+                      value={cardNumber}
+                      onChange={handleCardNumberChange}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none font-mono"
+                    />
+                    <span className="absolute right-3.5 top-2.5 text-xs text-slate-400">💳</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Expiry Date
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="MM/YY"
+                      value={expiry}
+                      onChange={handleExpiryChange}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                      CVC / CVV
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      maxLength={4}
+                      placeholder="123"
+                      value={cvc}
+                      onChange={(e) => setCvc(e.target.value.replace(/\D/g, ''))}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none text-center font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-6 flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlan(null)}
+                    disabled={isProcessing}
+                    className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-3 text-xs font-semibold text-white hover:bg-slate-700 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-3.5 py-3 text-xs font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400 transition disabled:opacity-50"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <svg className="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Processing...
+                      </>
+                    ) : (
+                      `Pay $${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00`
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Footer Benefits */}
       <section className="grid gap-6 lg:grid-cols-3">
