@@ -39,6 +39,22 @@ const AssistantPage = () => {
   const generateSmartResponse = (input: string): string => {
     const text = input.toLowerCase().trim();
 
+    // 0. Support & Human Help Check
+    if (
+      text.includes('support') || 
+      text.includes('help') || 
+      text.includes('contact') || 
+      text.includes('issue') || 
+      text.includes('bug') || 
+      text.includes('human') || 
+      text.includes('problem') || 
+      text.includes('مساعدة') || 
+      text.includes('دعم') || 
+      text.includes('مشكلة')
+    ) {
+      return `💬 Need direct assistance or found an issue?\n\nYou can reach our human support desk anytime at:\n✉️ cashcollectionsupport@gmail.com\n\nOur team actively reviews tickets and will resolve your inquiry promptly.`;
+    }
+
     const overdueInvoices = invoices.filter((inv) => inv.status === 'Overdue');
     const dueSoonInvoices = invoices.filter((inv) => inv.status === 'Due Soon');
     const totalOverdue = overdueInvoices.reduce((sum, inv) => sum + parseAmount(inv.amount), 0);
@@ -130,7 +146,8 @@ const AssistantPage = () => {
       `You can ask me to:\n` +
       `1. Draft a collection email (e.g. "Write a collection email for Apex")\n` +
       `2. Analyze customer credit risks (e.g. "Who are high risk customers?")\n` +
-      `3. Project incoming cash flows (e.g. "What is our 30-day forecast?")`;
+      `3. Project incoming cash flows (e.g. "What is our 30-day forecast?")\n\n` +
+      `💡 Need human support? Contact us at cashcollectionsupport@gmail.com`;
   };
 
   const handleQuickPrompt = (prompt: string) => {
@@ -199,6 +216,12 @@ const AssistantPage = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-2xl bg-slate-800/80 px-3 py-2 text-sm text-slate-300">Live Engine</span>
+            <a
+              href="mailto:cashcollectionsupport@gmail.com?subject=Cash%20Collection%20Agent%20-%20Support%20Request"
+              className="rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-200 transition hover:border-brand-500 hover:text-white"
+            >
+              Contact Support
+            </a>
             <button
               type="button"
               onClick={resetAssistant}
