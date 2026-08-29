@@ -5,32 +5,38 @@ const plans = [
   {
     title: 'Starter',
     priceMonthly: 450,
-    priceAnnual: 360,
+    priceAnnualMonthlyEquivalent: 360,
+    annualTotal: 4320,
     currency: 'EGP',
     description: 'For small teams that need reliable invoice collection',
     features: ['Invoice tracking', 'Due date reminders', 'Customer risk scores'],
     popular: false,
-    checkoutUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/060f698d-6514-4f12-967b-c6e5a1360613'
+    checkoutMonthlyUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/060f698d-6514-4f12-967b-c6e5a1360613',
+    checkoutAnnualUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/721b4325-7ef9-487e-aaff-54fe8cabb2b0'
   },
   {
     title: 'Growth',
     priceMonthly: 1400,
-    priceAnnual: 1120,
+    priceAnnualMonthlyEquivalent: 1120,
+    annualTotal: 13440,
     currency: 'EGP',
     description: 'For growing businesses with recurring receivables',
     features: ['Cash flow forecasting', 'Priority collections', 'Team workflows'],
     popular: true,
-    checkoutUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/9cfbafc6-714c-427c-900b-70427e0b21d1'
+    checkoutMonthlyUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/9cfbafc6-714c-427c-900b-70427e0b21d1',
+    checkoutAnnualUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/baca8fd0-e98e-4ad6-bdf7-d593388a9481'
   },
   {
     title: 'Enterprise',
     priceMonthly: 3500,
-    priceAnnual: 2800,
+    priceAnnualMonthlyEquivalent: 2800,
+    annualTotal: 33600,
     currency: 'EGP',
     description: 'For finance teams that need scale and automation',
     features: ['Dedicated onboarding', 'Custom integrations', 'Priority support'],
     popular: false,
-    checkoutUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/0e3d8efc-0735-44bf-8597-e72a277479d7'
+    checkoutMonthlyUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/0e3d8efc-0735-44bf-8597-e72a277479d7',
+    checkoutAnnualUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/e96bf248-66b3-4a68-b92f-4dbf15cc9853'
   }
 ];
 
@@ -84,7 +90,9 @@ const PricingPage = () => {
       {/* Pricing Cards */}
       <section className="grid gap-6 lg:grid-cols-3">
         {plans.map((plan) => {
-          const currentPrice = isAnnual ? plan.priceAnnual : plan.priceMonthly;
+          const displayPrice = isAnnual ? plan.priceAnnualMonthlyEquivalent : plan.priceMonthly;
+          const targetUrl = isAnnual ? plan.checkoutAnnualUrl : plan.checkoutMonthlyUrl;
+
           return (
             <div
               key={plan.title}
@@ -104,11 +112,11 @@ const PricingPage = () => {
                 <div>
                   <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{plan.title}</p>
                   <div className="mt-4 flex items-baseline gap-1.5">
-                    <span className="text-4xl font-semibold text-white">{currentPrice.toLocaleString()} {plan.currency}</span>
+                    <span className="text-4xl font-semibold text-white">{displayPrice.toLocaleString()} {plan.currency}</span>
                     <span className="text-sm font-medium text-slate-400">/ month</span>
                   </div>
                   {isAnnual && (
-                    <p className="mt-1 text-xs text-emerald-400 font-medium">Billed annually ({(currentPrice * 12).toLocaleString()} {plan.currency}/year)</p>
+                    <p className="mt-1 text-xs text-emerald-400 font-medium">Billed annually ({plan.annualTotal.toLocaleString()} {plan.currency}/year)</p>
                   )}
                   <p className="mt-3 text-sm text-slate-400">{plan.description}</p>
 
@@ -126,7 +134,7 @@ const PricingPage = () => {
               <div className="mt-8">
                 <button
                   type="button"
-                  onClick={() => handleCheckout(plan.checkoutUrl)}
+                  onClick={() => handleCheckout(targetUrl)}
                   className={`inline-flex w-full items-center justify-center rounded-2xl px-4 py-3.5 text-sm font-semibold transition ${
                     plan.popular
                       ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400'
