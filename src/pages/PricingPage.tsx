@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useAppData } from '../context/AppDataContext';
 
 const plans = [
   {
@@ -30,19 +30,74 @@ const plans = [
 
 const PricingPage = () => {
   const [isAnnual, setIsAnnual] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+  const [toastMessage, setToastMessage] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Card Form State
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [cvc, setCvc] = useState('');
+
+  const { user } = useAppData();
+
+  const handleSelectPlan = (plan: any) => {
+    setSelectedPlan(plan);
+    setCardNumber('');
+    setCardHolder('');
+    setExpiry('');
+    setCvc('');
+  };
+
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '').slice(0, 16);
+    val = val.replace(/(\d{4})/g, '$1 ').trim();
+    setCardNumber(val);
+  };
+
+  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '').slice(0, 4);
+    if (val.length >= 3) {
+      val = `${val.slice(0, 2)}/${val.slice(2)}`;
+    }
+    setExpiry(val);
+  };
+
+  const handleConfirmSubscription = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsProcessing(true);
+
+    // Simulate payment gateway delay
+    setTimeout(() => {
+      setIsProcessing(false);
+      const planName = selectedPlan?.title;
+      setSelectedPlan(null);
+      setToastMessage(`🎉 Payment successful! You are now subscribed to the ${planName} Plan.`);
+      setTimeout(() => {
+        setToastMessage('');
+      }, 5000);
+    }, 1500);
+  };
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-10 relative">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/90 px-6 py-4 text-emerald-200 shadow-2xl shadow-black backdrop-blur-xl animate-bounce">
+          <span className="text-xl">✅</span>
+          <p className="text-sm font-semibold">{toastMessage}</p>
+        </div>
+      )}
+
+      {/* Header & Toggle */}
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-brand-300">Pricing</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-brand-300 font-semibold">Pricing Plans</p>
             <h1 className="mt-3 text-4xl font-semibold text-white">Simple plans for improving cash flow and reducing overdue exposure.</h1>
             <p className="mt-4 max-w-2xl text-slate-400">Choose the package that fits your finance team, then start recovering cash with fewer manual follow-ups.</p>
           </div>
-          <Link to="/signup" className="inline-flex items-center justify-center rounded-2xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-400">
-            Start free trial
-          </Link>
         </div>
 
         {/* Toggle Switch */}
@@ -68,13 +123,14 @@ const PricingPage = () => {
         </div>
       </section>
 
+      {/* Pricing Cards */}
       <section className="grid gap-6 lg:grid-cols-3">
         {plans.map((plan) => {
           const currentPrice = isAnnual ? plan.priceAnnual : plan.priceMonthly;
           return (
             <div
               key={plan.title}
-              className={`relative rounded-[2rem] p-6 shadow-xl transition-all duration-300 ${
+              className={`relative rounded-[2rem] p-6 shadow-xl transition-all duration-300 flex flex-col justify-between ${
                 plan.popular
                   ? 'border-2 border-brand-500 bg-slate-900 shadow-brand-500/10 lg:-translate-y-2'
                   : 'border border-slate-800/90 bg-slate-900/90 shadow-slate-950/20 hover:border-slate-700'
@@ -86,7 +142,7 @@ const PricingPage = () => {
                 </div>
               )}
 
-              <div className="flex h-full flex-col justify-between space-y-6">
+              <div className="space-y-6">
                 <div>
                   <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{plan.title}</p>
                   <div className="mt-4 flex items-baseline gap-1.5">
@@ -94,7 +150,7 @@ const PricingPage = () => {
                     <span className="text-sm font-medium text-slate-400">/ month</span>
                   </div>
                   {isAnnual && (
-                    <p className="mt-1 text-xs text-slate-400">Billed annually (${currentPrice * 12}/year)</p>
+                    <p className="mt-1 text-xs text-emerald-400 font-medium">Billed annually (${currentPrice * 12}/year)</p>
                   )}
                   <p className="mt-3 text-sm text-slate-400">{plan.description}</p>
 
@@ -107,23 +163,158 @@ const PricingPage = () => {
                     ))}
                   </ul>
                 </div>
+              </div>
 
-                <Link
-                  to="/signup"
-                  className={`inline-flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+              <div className="mt-8">
+                <button
+                  type="button"
+                  onClick={() => handleSelectPlan(plan)}
+                  className={`inline-flex w-full items-center justify-center rounded-2xl px-4 py-3.5 text-sm font-semibold transition ${
                     plan.popular
                       ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400'
                       : 'border border-slate-700 bg-slate-800/80 text-white hover:border-brand-500 hover:bg-slate-800'
                   }`}
                 >
-                  Choose plan
-                </Link>
+                  Choose {plan.title}
+                </button>
               </div>
             </div>
           );
         })}
       </section>
 
+      {/* Credit Card Checkout Modal */}
+      {selectedPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+          <div className="w-full max-w-lg rounded-[2.5rem] border border-slate-800 bg-slate-900 p-8 shadow-2xl max-h-[95vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <span className="text-xs uppercase tracking-widest text-brand-300 font-bold">Secure Checkout</span>
+                <h3 className="text-xl font-bold text-white mt-1">Upgrade to {selectedPlan.title}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPlan(null)}
+                className="text-slate-400 hover:text-white text-lg p-2"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Order Summary Box */}
+            <div className="mt-5 rounded-2xl bg-slate-950/90 p-4 border border-slate-800/80">
+              <div className="flex justify-between text-xs text-slate-400">
+                <span>Account:</span>
+                <span className="text-slate-200 font-medium">{user?.email || 'shady@orderflow.com'}</span>
+              </div>
+              <div className="mt-2 flex justify-between text-xs text-slate-400">
+                <span>Billing Cycle:</span>
+                <span className="text-slate-200">{isAnnual ? 'Annual (20% Off)' : 'Monthly'}</span>
+              </div>
+              <div className="mt-3 flex justify-between border-t border-slate-800/80 pt-3 text-base font-bold text-white">
+                <span>Total Due:</span>
+                <span className="text-emerald-400">
+                  ${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00
+                </span>
+              </div>
+            </div>
+
+            {/* Card Payment Form */}
+            <form onSubmit={handleConfirmSubscription} className="mt-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Cardholder Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Shady Samy"
+                  value={cardHolder}
+                  onChange={(e) => setCardHolder(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Card Number
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="4000 1234 5678 9010"
+                    value={cardNumber}
+                    onChange={handleCardNumberChange}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
+                  />
+                  <span className="absolute right-4 top-3.5 text-xs text-slate-400 font-mono">💳 VISA/MC</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="MM/YY"
+                    value={expiry}
+                    onChange={handleExpiryChange}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    CVC / CVV
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    maxLength={4}
+                    placeholder="123"
+                    value={cvc}
+                    onChange={(e) => setCvc(e.target.value.replace(/\D/g, ''))}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-brand-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-8 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlan(null)}
+                  disabled={isProcessing}
+                  className="flex-1 rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3.5 text-sm font-semibold text-white hover:bg-slate-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400 transition disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <>
+                      <svg className="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processing...
+                    </>
+                  ) : (
+                    `Pay $${isAnnual ? selectedPlan.priceAnnual * 12 : selectedPlan.priceMonthly}.00`
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Footer Benefits */}
       <section className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-[2rem] border border-slate-800/90 bg-slate-950/80 p-8 shadow-xl shadow-slate-950/20">
           <h2 className="text-xl font-semibold text-white">Why Cash Collection Agent?</h2>
