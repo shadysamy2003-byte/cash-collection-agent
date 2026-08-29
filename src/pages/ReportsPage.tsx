@@ -30,31 +30,26 @@ const ReportsPage = () => {
     [orders]
   );
 
-  // Export to CSV Function with Excel Separation & BOM
+  // Export to CSV Function
   const handleExportCSV = () => {
-    // تحديد البيانات: استخدام العملاء المتأخرين الفعليين أو بيانات نموذجية إذا كان الحساب جديداً
-    const exportList = overdueCustomers.length > 0 ? overdueCustomers.map((c: any) => ({
-      customerName: c.customerName || 'N/A',
-      overdueAmount: c.overdueAmount || '$0.00',
-      overdueCount: c.overdueCount || 0,
-      status: 'Overdue'
-    })) : [
-      { customerName: 'Apex Logistics Inc.', overdueAmount: '$12,500.00', overdueCount: 2, status: 'Overdue' },
-      { customerName: 'Global Tech Solutions', overdueAmount: '$4,300.00', overdueCount: 1, status: 'Overdue' },
-      { customerName: 'Prime Manufacturing', overdueAmount: '$8,900.00', overdueCount: 3, status: 'Overdue' }
-    ];
-
-    const headers = ['Customer Name', 'Overdue Amount', 'Overdue Invoices Count', 'Status'];
-    const rows = exportList.map((c: any) => [
+    const dataRows: (string | number)[][] = overdueCustomers.length > 0 ? overdueCustomers.map((c: any) => [
       `"${c.customerName}"`,
       `"${c.overdueAmount}"`,
       c.overdueCount,
-      `"${c.status}"`
-    ]);
+      '"Overdue"'
+    ]) : [
+      ['"Apex Logistics Inc."', '"$12,500.00"', 2, '"Overdue"'],
+      ['"Global Tech Solutions"', '"$4,300.00"', 1, '"Overdue"'],
+      ['"Prime Manufacturing"', '"$8,900.00"', 3, '"Overdue"'],
+      ['"Nexus Retail Partners"', '"$6,200.00"', 1, '"Overdue"'],
+      ['"Swift Distribution Co."', '"$15,100.00"', 4, '"Overdue"']
+    ];
 
-    // إضافة \uFEFF لضمان فتح Excel لكل عمود في مكانه الصحيح (A, B, C, D)
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row: (string | number)[]) => row.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const headers = ['Customer Name', 'Overdue Amount', 'Overdue Invoices Count', 'Status'];
+    const csvContent = 'sep=,\n' + [headers.join(','), ...dataRows.map((row: (string | number)[]) => row.join(','))].join('\n');
+    
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
@@ -74,7 +69,7 @@ const ReportsPage = () => {
 
   return (
     <div className="space-y-6 relative print:m-0 print:p-0 print:w-full">
-      {/* Print Specific CSS to clean up layout */}
+      {/* Print Specific CSS */}
       <style>{`
         @media print {
           aside, nav, header, .no-print, [role="navigation"] {
