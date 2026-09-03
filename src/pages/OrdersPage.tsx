@@ -56,9 +56,195 @@ const getStatusBadgeClass = (status: InvoiceStatus) => {
 
 const STORAGE_KEY = 'orderflow_invoice_form_draft_v1';
 
-// كلاس Tailwind موحد لعرض أيقونة التقويم بيضاء ناصعة
-const dateInputStyle =
-  'mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200';
+// مكون تقويم مخصص بالكامل لحل مشكلة المتصفح المعكوس والأيقونة المظلمة
+const CustomDatePicker = ({
+  value,
+  onChange,
+  placeholder = 'Select date'
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const parsed = useMemo(() => {
+    if (value && !Number.isNaN(new Date(value).getTime())) {
+      const d = new Date(value);
+      return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
+    }
+    const today = new Date();
+    return { y: today.getFullYear(), m: today.getMonth(), d: today.getDate() };
+  }, [value]);
+
+  const [viewYear, setViewYear] = useState(parsed.y);
+  const [viewMonth, setViewMonth] = useState(parsed.m);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // السهم للأعلى ينقلك للشهر القادم
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  };
+
+  // السهم للأسفل يرجعك للشهر السابق
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  };
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayIndex = new Date(viewYear, viewMonth, 1).getDay();
+
+  const days: (number | null)[] = [];
+  for (let i = 0; i < firstDayIndex; i++) days.push(null);
+  for (let d = 1; d <= daysInMonth; d++) days.push(d);
+
+  const handleSelectDay = (d: number) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    onChange(`${viewYear}-${pad(viewMonth + 1)}-${pad(d)}`);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="mt-2 flex w-full items-center justify-between rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white transition hover:border-slate-700"
+      >
+        <span className={value ? 'text-white' : 'text-slate-500'}>
+          {value || placeholder}
+        </span>
+        {/* أيقونة تقويم بيضاء نقية وواضحة */}
+        <svg
+          className="h-5 w-5 text-white"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <span className="text-sm font-semibold text-white">
+              {monthNames[viewMonth]} {viewYear}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                title="الشهر السابق"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                title="الشهر القادم (للأعلى)"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-slate-400">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+
+          <div className="mt-2 grid grid-cols-7 gap-1 text-center text-xs">
+            {days.map((d, idx) => {
+              if (d === null) return <div key={`empty-${idx}`} className="h-8 w-8" />;
+              const isCurrent =
+                value &&
+                new Date(value).getFullYear() === viewYear &&
+                new Date(value).getMonth() === viewMonth &&
+                new Date(value).getDate() === d;
+
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => handleSelectDay(d)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                    isCurrent
+                      ? 'bg-brand-500 font-bold text-white'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex justify-between border-t border-slate-800 pt-2 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+              }}
+              className="text-slate-400 hover:text-rose-400"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                onChange(formatDateInput(now));
+                setViewYear(now.getFullYear());
+                setViewMonth(now.getMonth());
+                setIsOpen(false);
+              }}
+              className="font-medium text-brand-400 hover:underline"
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const OrdersPage = () => {
   const { orders: invoices, inventory: customers, customerInsights, addOrder, updateOrder, deleteOrder } = useAppData();
@@ -70,29 +256,23 @@ const OrdersPage = () => {
   const [sortKey, setSortKey] = useState<typeof sortOptions[number]>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // حالة تسجيل السداد الفردي
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentDate, setPaymentDate] = useState(formatDateInput(new Date()));
 
-  // حالة استيراد كشف الحساب البنكي
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
   const [parsedBankFeed, setParsedBankFeed] = useState<BankTransaction[]>([]);
   const [selectedMatches, setSelectedMatches] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // حالة إيصال السداد (Payment Receipt Modal)
   const [receiptInvoice, setReceiptInvoice] = useState<Invoice | null>(null);
 
-  // استرجاع المسودة تلقائياً
   const [form, setForm] = useState<InvoiceFormState>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
+      if (saved) return JSON.parse(saved);
     } catch {
       // ignore
     }
@@ -111,34 +291,6 @@ const OrdersPage = () => {
 
   const [message, setMessage] = useState('');
 
-  // تعديل سلوك الأسهم لتقدم الشهور للأمام عند الضغط للأعلى
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLInputElement;
-      if (target && target.type === 'date') {
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-          e.preventDefault();
-          const parts = (target.value || formatDateInput(new Date())).split('-').map(Number);
-          const currentYear = parts[0] || new Date().getFullYear();
-          const currentMonth = parts[1] ? parts[1] - 1 : new Date().getMonth();
-          const currentDay = parts[2] || 1;
-
-          // ArrowUp ينقلك للشهر التالي (أغسطس -> سبتمبر -> أكتوبر)
-          const targetDate = new Date(Date.UTC(currentYear, currentMonth + (e.key === 'ArrowUp' ? 1 : -1), currentDay));
-          const formatted = targetDate.toISOString().slice(0, 10);
-
-          target.value = formatted;
-          const event = new Event('input', { bubbles: true });
-          target.dispatchEvent(event);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, []);
-
-  // حفظ النموذج في localStorage تلقائياً
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
@@ -152,11 +304,11 @@ const OrdersPage = () => {
     [invoices]
   );
 
-  const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
-  const insightMap = useMemo(() => new Map(customerInsights.map((insight) => [insight.id, insight])), [customerInsights]);
+  const customerMap = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers]);
+  const insightMap = useMemo(() => new Map(customerInsights.map((i) => [i.id, i])), [customerInsights]);
 
   const selectedInvoice = useMemo(
-    () => (selectedInvoiceId ? invoices.find((invoice) => invoice.id === selectedInvoiceId) ?? null : null),
+    () => (selectedInvoiceId ? invoices.find((inv) => inv.id === selectedInvoiceId) ?? null : null),
     [invoices, selectedInvoiceId]
   );
 
@@ -184,21 +336,15 @@ const OrdersPage = () => {
       })
       .sort((a, b) => {
         const direction = sortDirection === 'asc' ? 1 : -1;
-        if (sortKey === 'amount') {
-          return (parseAmount(a.amount) - parseAmount(b.amount)) * direction;
-        }
-        if (sortKey === 'dueDate') {
-          return (new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()) * direction;
-        }
-        if (sortKey === 'status') {
-          return String(a.status).localeCompare(String(b.status)) * direction;
-        }
+        if (sortKey === 'amount') return (parseAmount(a.amount) - parseAmount(b.amount)) * direction;
+        if (sortKey === 'dueDate') return (new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()) * direction;
+        if (sortKey === 'status') return String(a.status).localeCompare(String(b.status)) * direction;
         return String(a.customerName).localeCompare(String(b.customerName)) * direction;
       });
   }, [invoices, customerMap, insightMap, riskFilter, searchQuery, sortDirection, sortKey, statusFilter]);
 
   const resetForm = () => {
-    const fresh: InvoiceFormState = {
+    setForm({
       invoiceNumber: '',
       customerId: '',
       customerName: '',
@@ -208,8 +354,7 @@ const OrdersPage = () => {
       status: 'Sent',
       paymentDate: '',
       notes: ''
-    };
-    setForm(fresh);
+    });
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -248,7 +393,9 @@ const OrdersPage = () => {
     }
 
     const duplicateInvoice = invoices.find(
-      (invoice) => String(invoice.invoiceNumber).trim().toLowerCase() === form.invoiceNumber.trim().toLowerCase() && invoice.id !== editing?.id
+      (invoice) =>
+        String(invoice.invoiceNumber).trim().toLowerCase() === form.invoiceNumber.trim().toLowerCase() &&
+        invoice.id !== editing?.id
     );
     if (duplicateInvoice) {
       setMessage('Invoice number already exists.');
@@ -334,10 +481,10 @@ const OrdersPage = () => {
 
     const isFullSettlement = paid >= total;
     const newStatus: InvoiceStatus = isFullSettlement ? 'Paid' : 'Partially Paid';
-    const auditNote = `[Payment Logged: ${formatCurrency(paid)} via ${paymentMethod}${paymentReference ? ` (Ref: ${paymentReference})` : ''} on ${paymentDate}]`;
-    const updatedNotes = paymentModalInvoice.notes
-      ? `${paymentModalInvoice.notes}\n${auditNote}`
-      : auditNote;
+    const auditNote = `[Payment Logged: ${formatCurrency(paid)} via ${paymentMethod}${
+      paymentReference ? ` (Ref: ${paymentReference})` : ''
+    } on ${paymentDate}]`;
+    const updatedNotes = paymentModalInvoice.notes ? `${paymentModalInvoice.notes}\n${auditNote}` : auditNote;
 
     const updatedInv: Invoice = {
       ...paymentModalInvoice,
@@ -399,18 +546,16 @@ const OrdersPage = () => {
           if (matchedMap.has(inv.id)) continue;
           const invAmount = parseAmount(inv.amount);
           const cleanInvNum = inv.invoiceNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const cleanDesc = description.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const cleanCustName = inv.customerName.toLowerCase();
           const diff = invAmount - amount;
 
-          if (cleanDesc.includes(cleanInvNum) && Math.abs(diff) < 0.01) {
+          if (description.toLowerCase().includes(cleanInvNum) && Math.abs(diff) < 0.01) {
             bestInvoice = inv;
             matchType = 'Exact Invoice #';
             matchConfidence = 100;
             break;
           }
 
-          if (cleanDesc.includes(cleanInvNum) && diff > 0 && diff <= 15) {
+          if (description.toLowerCase().includes(cleanInvNum) && diff > 0 && diff <= 15) {
             bestInvoice = inv;
             matchType = 'Match with Bank Fee';
             matchConfidence = 95;
@@ -418,7 +563,7 @@ const OrdersPage = () => {
             break;
           }
 
-          if (description.toLowerCase().includes(cleanCustName) && Math.abs(diff) < 0.01) {
+          if (description.toLowerCase().includes(inv.customerName.toLowerCase()) && Math.abs(diff) < 0.01) {
             bestInvoice = inv;
             matchType = 'Customer & Amount';
             matchConfidence = 85;
@@ -467,7 +612,7 @@ const OrdersPage = () => {
         const total = parseAmount(inv.amount);
         const paid = tx.amount;
         const fee = tx.feeAmount || 0;
-        const isFull = (paid + fee) >= total;
+        const isFull = paid + fee >= total;
         const newStatus: InvoiceStatus = isFull ? 'Paid' : 'Partially Paid';
 
         const feeAudit = fee > 0 ? ` [Bank Fee Deducted: ${formatCurrency(fee)}]` : '';
@@ -717,7 +862,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* نموذج إنشاء أو تعديل الفاتورة بأيقونات بيضاء ناصعة وضبط للاتجاهات */}
+        {/* نموذج إنشاء أو تعديل الفاتورة مع التقويم المخصص بالأيقونة البيضاء النقية */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
           <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow. (Drafts auto-saved)</p>
@@ -771,24 +916,20 @@ const OrdersPage = () => {
               />
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm text-slate-300">
-                Issue date
-                <input
-                  type="date"
+              <div>
+                <label className="block text-sm text-slate-300">Issue date</label>
+                <CustomDatePicker
                   value={form.issueDate}
-                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: event.target.value }))}
-                  className={dateInputStyle}
+                  onChange={(val) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: val }))}
                 />
-              </label>
-              <label className="block text-sm text-slate-300">
-                Due date
-                <input
-                  type="date"
+              </div>
+              <div>
+                <label className="block text-sm text-slate-300">Due date</label>
+                <CustomDatePicker
                   value={form.dueDate}
-                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: event.target.value }))}
-                  className={dateInputStyle}
+                  onChange={(val) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: val }))}
                 />
-              </label>
+              </div>
             </div>
             <label className="block text-sm text-slate-300">
               Status
@@ -803,15 +944,13 @@ const OrdersPage = () => {
               </select>
             </label>
             {form.status === 'Paid' && (
-              <label className="block text-sm text-slate-300">
-                Payment date
-                <input
-                  type="date"
+              <div>
+                <label className="block text-sm text-slate-300">Payment date</label>
+                <CustomDatePicker
                   value={form.paymentDate}
-                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, paymentDate: event.target.value }))}
-                  className={dateInputStyle}
+                  onChange={(val) => setForm((prev: InvoiceFormState) => ({ ...prev, paymentDate: val }))}
                 />
-              </label>
+              </div>
             )}
             <label className="block text-sm text-slate-300">
               Notes
@@ -845,7 +984,7 @@ const OrdersPage = () => {
         </div>
       </section>
 
-      {/* تفاصيل الفاتورة المحددة */}
+      {/* نافذة تفاصيل الفاتورة المحددة */}
       {selectedInvoice && (
         <div className="rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <div className="flex items-center justify-between gap-4">
@@ -965,12 +1104,9 @@ const OrdersPage = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Date</label>
-                  <input
-                    type="date"
-                    required
+                  <CustomDatePicker
                     value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200"
+                    onChange={(val) => setPaymentDate(val)}
                   />
                 </div>
               </div>
@@ -1006,7 +1142,7 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* نافذة المطابقة البنكية مع إدارة الرسوم والعمولات */}
+      {/* نافذة المطابقة البنكية */}
       {isBankModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-[2.5rem] border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden">
@@ -1015,7 +1151,7 @@ const OrdersPage = () => {
                 <span className="text-xs uppercase tracking-[0.25em] text-brand-400 font-semibold">Automated Reconciliation Engine</span>
                 <h3 className="text-2xl font-bold text-white mt-1">Bank Statement Reconciliation</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Found {parsedBankFeed.length} transaction(s). {Object.values(selectedMatches).filter(Boolean).length} matched automatically with bank fee tolerance support.
+                  Found {parsedBankFeed.length} transaction(s). {Object.values(selectedMatches).filter(Boolean).length} matched automatically.
                 </p>
               </div>
               <button
@@ -1127,7 +1263,7 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* نافذة إيصال السداد الرسمي (Payment Receipt Modal) */}
+      {/* نافذة إيصال السداد */}
       {receiptInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-lg rounded-[2.5rem] border border-slate-800 bg-slate-900 p-8 shadow-2xl">
