@@ -12,6 +12,7 @@ import ReportsPage from './pages/ReportsPage';
 import ActionsPage from './pages/ActionsPage';
 import AssistantPage from './pages/AssistantPage';
 import SettingsPage from './pages/SettingsPage';
+import Legal from './pages/LegalPage';
 import PageShell from './components/PageShell';
 
 const App = () => {
@@ -47,7 +48,7 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl sticky top-0 z-50">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/" className="text-xl font-semibold text-white tracking-wide hover:text-brand-300 transition">
@@ -111,13 +112,14 @@ const App = () => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 flex-1 w-full">
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/signup" element={<AuthPage mode="signup" />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/legal" element={<Legal />} />
           <Route
             path="/*"
             element={
@@ -141,6 +143,18 @@ const App = () => {
           />
         </Routes>
       </main>
+
+      {/* Footer معتمد ومستوفي لشروط Paddle */}
+      <footer className="border-t border-slate-800/80 bg-slate-950 py-6 text-center text-sm text-slate-400">
+        <div className="mx-auto max-w-7xl px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p>© {new Date().getFullYear()} Cash Collection Agent. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <Link to="/legal" className="hover:text-white transition">Terms & Privacy Policy</Link>
+            <Link to="/pricing" className="hover:text-white transition">Pricing & Refunds</Link>
+            <a href="mailto:Shadysamy2003@gmail.com" className="hover:text-white transition">Support</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
