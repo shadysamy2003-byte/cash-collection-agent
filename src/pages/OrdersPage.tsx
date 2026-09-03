@@ -97,8 +97,8 @@ const OrdersPage = () => {
       customerId: '',
       customerName: '',
       amount: '',
-      issueDate: '',
-      dueDate: '',
+      issueDate: formatDateInput(new Date()),
+      dueDate: formatDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
       status: 'Sent' as InvoiceStatus,
       paymentDate: '',
       notes: ''
@@ -172,8 +172,8 @@ const OrdersPage = () => {
       customerId: '',
       customerName: '',
       amount: '',
-      issueDate: '',
-      dueDate: '',
+      issueDate: formatDateInput(new Date()),
+      dueDate: formatDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
       status: 'Sent',
       paymentDate: '',
       notes: ''
@@ -693,7 +693,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* نموذج إنشاء أو تعديل الفاتورة مع حفظ مسودة تلقائي */}
+        {/* نموذج إنشاء أو تعديل الفاتورة مع تحسين حقول التاريخ والتقويم */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
           <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow. (Drafts auto-saved)</p>
@@ -749,21 +749,25 @@ const OrdersPage = () => {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm text-slate-300">
                 Issue date
-                <input
-                  type="date"
-                  value={form.issueDate}
-                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
-                />
+                <div className="relative mt-2">
+                  <input
+                    type="date"
+                    value={form.issueDate}
+                    onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: event.target.value }))}
+                    className="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  />
+                </div>
               </label>
               <label className="block text-sm text-slate-300">
                 Due date
-                <input
-                  type="date"
-                  value={form.dueDate}
-                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
-                />
+                <div className="relative mt-2">
+                  <input
+                    type="date"
+                    value={form.dueDate}
+                    onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: event.target.value }))}
+                    className="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  />
+                </div>
               </label>
             </div>
             <label className="block text-sm text-slate-300">
@@ -785,7 +789,7 @@ const OrdersPage = () => {
                   type="date"
                   value={form.paymentDate}
                   onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, paymentDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
+                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                 />
               </label>
             )}
@@ -946,7 +950,7 @@ const OrdersPage = () => {
                     required
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                   />
                 </div>
               </div>
