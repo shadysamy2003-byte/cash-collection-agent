@@ -14,7 +14,7 @@ export const currencySymbols: Record<string, string> = {
   'EGP (ج.م)': 'ج.م ',
 };
 
-// أسعار الصرف الافتراضية كاحتياطي في حال عدم توفر الاتصال بالإنترنت
+// أسعار الصرف الافتراضية كاحتياطي
 const defaultExchangeRates: Record<string, number> = {
   'USD ($)': 1,
   'EUR (€)': 0.92,
@@ -103,7 +103,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const [shipping, setShipping] = useState<NotificationItem[]>([]);
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
   
-  // حالة لأسعار الصرف الحية من API
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(defaultExchangeRates);
   
   const [settings, setSettings] = useState<Settings>(() => {
@@ -127,7 +126,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // جلب أسعار الصرف الحية والحديثة لحظياً عند تشغيل التطبيق
+  // جلب أسعار الصرف الحية للتسجيل الجديد
   useEffect(() => {
     fetch('https://open.er-api.com/v6/latest/USD')
       .then((res) => res.json())
@@ -144,7 +143,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         }
       })
       .catch(() => {
-        // الاستمرار بالأسعار الافتراضية في حال عدم الاتصال
+        // الاستمرار بالافتراضي عند عدم الاتصال
       });
   }, []);
 
@@ -263,12 +262,18 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return map;
   }, [inventory]);
 
-  // توليد الفواتير مع الاعتماد على السعر الحي وسعر الصرف وقت التسجيل
+  // توليد الفواتير مع اعتماد سعر الصرف التاريخي الخاص بكل فاتورة وقت إنشائها (لا يتغير مستقبلاً)
   const orders: Invoice[] = useMemo(() => {
     return rawInvoices.map((db) => {
       const custId = db.customer_id || db.customerId || '';
       const baseAmountUSD = Number(db.amount) || 0;
-      const convertedAmount = baseAmountUSD * currentExchangeRate;
+      
+      // استخدام سعر الصرف التاريخي المخزّن حصرياً للفاتورة، وإذا لم يوجد يتم استخدام السعر الحالي كاحتياطي
+      const historicalRate = db.exchange_rate !== undefined && db.exchange_rate !== null && Number(db.exchange_rate) > 0 
+        ? Number(db.exchange_rate) 
+        : currentExchangeRate;
+
+      const convertedAmount = baseAmountUSD * historicalRate;
 
       const formatted = convertedAmount.toLocaleString(undefined, {
         minimumFractionDigits: 2,
@@ -558,7 +563,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return 'Rule-based insight: ask about highest risk customers, invoices due today, or cash expected in the next 30 days.';
   };
 
-  // تسجيل الفاتورة مع حفظ سعر الصرف الحي والدقيق وقت التسجيل
   const addOrder = async (order: Omit<Invoice, 'id'>) => {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (!authUser) {
@@ -580,7 +584,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       user_id: authUser.id,
       invoice_number: order.invoiceNumber,
       amount: baseAmountUSD,
-      exchange_rate: currentExchangeRate, // تثبيت سعر الصرف الحي وقت التسجيل
+      exchange_rate: currentExchangeRate, // تثبيت سعر الصرف الحي وقت تسجيل الفاتورة حصرياً
       issue_date: order.issueDate,
       due_date: order.dueDate,
       status: order.status,
@@ -594,7 +598,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     if (error) {
       showToast(error.message || 'Error adding invoice', 'error');
     } else {
-      showToast('Invoice created successfully with live exchange rate', 'success');
+      showToast('Invoice created successfully with historical live rate', 'success');
       await fetchData();
     }
   };
