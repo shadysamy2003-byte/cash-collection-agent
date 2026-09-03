@@ -57,16 +57,23 @@ const App = () => {
           <div className="flex items-center gap-3">
             {user ? (
               <>
-                {/* شريط حالة الفترة التجريبية */}
+                {/* شريط حالة الفترة التجريبية وزر الترقية التفاعلي */}
                 {!user.hasActiveSubscription && (
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border ${
-                    user.isTrialExpired
-                      ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-                      : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                  }`}>
+                  <Link
+                    to="/pricing"
+                    title="Click to upgrade your plan"
+                    className={`group inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-all duration-200 hover:scale-105 ${
+                      user.isTrialExpired
+                        ? 'border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+                        : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                    }`}
+                  >
                     <span className={`h-2 w-2 rounded-full ${user.isTrialExpired ? 'bg-rose-400' : 'bg-amber-400 animate-pulse'}`} />
-                    {user.isTrialExpired ? 'Trial Expired' : '7 days left in trial'}
-                  </span>
+                    <span>{user.isTrialExpired ? 'Trial Expired' : '7 days left in trial'}</span>
+                    <span className="ml-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-200 group-hover:bg-amber-500 group-hover:text-slate-950 transition">
+                      Upgrade
+                    </span>
+                  </Link>
                 )}
 
                 <span className="hidden rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-sm text-slate-200 sm:inline-block">
