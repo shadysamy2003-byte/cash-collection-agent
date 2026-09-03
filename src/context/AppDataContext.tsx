@@ -3,13 +3,22 @@ import { supabase } from '../lib/supabase';
 import type { AssistantMessage, Customer, Invoice, NotificationItem, Settings, User } from '../types';
 import { Toast, ToastMessage } from '../components/Toast';
 
-const parseCurrency = (value: string | number | unknown) => {
+const SETTINGS_STORAGE_KEY = 'orderflow_app_settings_v1';
+
+export const currencySymbols: Record<string, string> = {
+  'USD ($)': '$',
+  'EUR (€)': '€',
+  'GBP (£)': '£',
+  'SAR (﷼)': 'SAR ',
+  'AED (د.إ)': 'AED ',
+  'EGP (ج.م)': 'ج.م ',
+};
+
+export const parseCurrency = (value: string | number | unknown) => {
   if (typeof value === 'number') return Number.isNaN(value) ? 0 : value;
   if (typeof value === 'string') return Number(value.replace(/[^0-9.-]+/g, '')) || 0;
   return 0;
 };
-
-const formatCurrency = (amount: number) => `$${(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const getToday = () => new Date().toISOString().slice(0, 10);
 
@@ -19,43 +28,6 @@ const diffDays = (dateString: string, reference = getToday()) => {
   const current = new Date(`${reference}T00:00:00`);
   return Math.floor((current.getTime() - target.getTime()) / (1000 * 60 * 60 * 24));
 };
-
-// تحويل سجل الفاتورة من Supabase إلى الواجهة
-const mapInvoiceFromDb = (db: any, customersMap: Map<string, string>): Invoice => {
-  const custId = db.customer_id || db.customerId || '';
-  return {
-    id: db.id,
-    invoiceNumber: db.invoice_number || db.invoiceNumber || '',
-    customerId: custId,
-    customerName: db.customer_name || customersMap.get(custId) || 'Unknown Customer',
-    amount: db.amount !== undefined ? formatCurrency(Number(db.amount) || 0) : '$0.00',
-    issueDate: db.issue_date || db.issueDate || '',
-    dueDate: db.due_date || db.dueDate || '',
-    status: db.status || 'Sent',
-    paymentDate: db.payment_date || db.paymentDate || undefined,
-    notes: db.notes || '',
-    priority: db.priority || 'Medium',
-    priorityReason: db.priority_reason || db.priorityReason || '',
-    contacted: db.contacted ?? false,
-    followUpOn: db.follow_up_on || db.followUpOn || undefined,
-  };
-};
-
-// تحويل سجل العميل من Supabase إلى الواجهة
-const mapCustomerFromDb = (db: any): Customer => ({
-  id: db.id,
-  name: db.name || '',
-  company: db.company || '',
-  email: db.email || '',
-  phone: db.phone || '',
-  outstanding: db.outstanding !== undefined ? db.outstanding : 0,
-  overdue: db.overdue !== undefined ? db.overdue : 0,
-  totalOutstanding: formatCurrency(Number(db.outstanding) || 0),
-  totalOverdue: formatCurrency(Number(db.overdue) || 0),
-  averageDaysToPay: db.average_days_to_pay !== undefined ? db.average_days_to_pay : 0,
-  reliability: db.reliability || 'Good',
-  paymentHistory: db.payment_history || [],
-});
 
 export type ExtendedUser = User & {
   createdAt?: string;
@@ -74,6 +46,8 @@ export type AppDataContextValue = {
   shipping: NotificationItem[];
   assistantMessages: AssistantMessage[];
   settings: Settings;
+  formatCurrency: (amount: number) => string;
+  currencySymbol: string;
   metrics: {
     revenue: number;
     costs: number;
@@ -114,19 +88,65 @@ const AppDataContext = createContext<AppDataContextValue | undefined>(undefined)
 
 export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<ExtendedUser | null>(null);
-  const [orders, setOrders] = useState<Invoice[]>([]);
-  const [inventory, setInventory] = useState<Customer[]>([]);
+  const [rawInvoices, setRawInvoices] = useState<any[]>([]);
+  const [rawCustomers, setRawCustomers] = useState<any[]>([]);
   const [shipping, setShipping] = useState<NotificationItem[]>([]);
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
-  const [settings, setSettings] = useState<Settings>({
-    workspaceName: 'Cash Collection Agent',
-    timezone: 'UTC-5 Eastern Time',
-    invoiceReminders: true,
-    dueSoonAlerts: true,
-    largeOverdueAlerts: true,
+  
+  const [settings, setSettings] = useState<Settings>(() => {
+    try {
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return {
+      workspaceName: 'Cash Collection Agent',
+      timezone: 'UTC-5 Eastern Time',
+      currency: 'USD ($)',
+      notificationEmail: 'karim.adel@orderflow.tech',
+      largeInvoiceThreshold: '5000',
+      invoiceReminders: true,
+      dueSoonAlerts: true,
+      largeOverdueAlerts: true,
+    } as any;
   });
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // رمز العملة المستخرج من الإعدادات
+  const currencySymbol = useMemo(() => {
+    const cur = (settings as any)?.currency || 'USD ($)';
+    return currencySymbols[cur] || '$';
+  }, [settings]);
+
+  const formatCurrency = useMemo(() => {
+    return (amount: number) => {
+      const formatted = (amount || 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      return `${currencySymbol}${formatted}`;
+    };
+  }, [currencySymbol]);
+
+  // الاستماع لأي تغيير في العملة من صفحات أخرى
+  useEffect(() => {
+    const syncSettings = () => {
+      try {
+        const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (saved) setSettings(JSON.parse(saved));
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('orderflow_currency_updated', syncSettings);
+    window.addEventListener('storage', syncSettings);
+    return () => {
+      window.removeEventListener('orderflow_currency_updated', syncSettings);
+      window.removeEventListener('storage', syncSettings);
+    };
+  }, []);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -171,12 +191,8 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       supabase.from('notifications').select('*').eq('user_id', authUser.id),
     ]);
 
-    const customersData = custRes.data ? custRes.data.map(mapCustomerFromDb) : [];
-    const custMap = new Map<string, string>();
-    customersData.forEach((c) => custMap.set(c.id, c.name));
-
-    if (custRes.data) setInventory(customersData);
-    if (invRes.data) setOrders(invRes.data.map((db) => mapInvoiceFromDb(db, custMap)));
+    if (custRes.data) setRawCustomers(custRes.data);
+    if (invRes.data) setRawInvoices(invRes.data);
     if (shipRes.data) setShipping(shipRes.data);
   };
 
@@ -191,6 +207,53 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // توليد قائمة العملاء مع العملة الحية
+  const inventory: Customer[] = useMemo(() => {
+    return rawCustomers.map((db) => ({
+      id: db.id,
+      name: db.name || '',
+      company: db.company || '',
+      email: db.email || '',
+      phone: db.phone || '',
+      outstanding: db.outstanding !== undefined ? db.outstanding : 0,
+      overdue: db.overdue !== undefined ? db.overdue : 0,
+      totalOutstanding: formatCurrency(Number(db.outstanding) || 0),
+      totalOverdue: formatCurrency(Number(db.overdue) || 0),
+      averageDaysToPay: db.average_days_to_pay !== undefined ? db.average_days_to_pay : 0,
+      reliability: db.reliability || 'Good',
+      paymentHistory: db.payment_history || [],
+    }));
+  }, [rawCustomers, formatCurrency]);
+
+  const customerMap = useMemo(() => {
+    const map = new Map<string, string>();
+    inventory.forEach((c) => map.set(c.id, c.name));
+    return map;
+  }, [inventory]);
+
+  // توليد الفواتير مع العملة الحية
+  const orders: Invoice[] = useMemo(() => {
+    return rawInvoices.map((db) => {
+      const custId = db.customer_id || db.customerId || '';
+      return {
+        id: db.id,
+        invoiceNumber: db.invoice_number || db.invoiceNumber || '',
+        customerId: custId,
+        customerName: db.customer_name || customerMap.get(custId) || 'Unknown Customer',
+        amount: formatCurrency(Number(db.amount) || 0),
+        issueDate: db.issue_date || db.issueDate || '',
+        dueDate: db.due_date || db.dueDate || '',
+        status: db.status || 'Sent',
+        paymentDate: db.payment_date || db.paymentDate || undefined,
+        notes: db.notes || '',
+        priority: db.priority || 'Medium',
+        priorityReason: db.priority_reason || db.priorityReason || '',
+        contacted: db.contacted ?? false,
+        followUpOn: db.follow_up_on || db.followUpOn || undefined,
+      };
+    });
+  }, [rawInvoices, customerMap, formatCurrency]);
 
   const signup = async (name: string, email: string, password: string) => {
     if (!name.trim() || !email.trim() || !password) {
@@ -215,8 +278,8 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setOrders([]);
-    setInventory([]);
+    setRawInvoices([]);
+    setRawCustomers([]);
     setShipping([]);
   };
 
@@ -309,7 +372,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         paymentHistory: customer.paymentHistory,
       };
     });
-  }, [orders, inventory]);
+  }, [orders, inventory, formatCurrency]);
 
   const forecastData = useMemo(() => {
     const today = getToday();
@@ -384,7 +447,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       aging,
       topOverdueCustomers,
     };
-  }, [forecastData, orders]);
+  }, [forecastData, orders, formatCurrency]);
 
   const getAlerts = () => {
     const today = getToday();
@@ -456,7 +519,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return 'Rule-based insight: ask about highest risk customers, invoices due today, or cash expected in the next 30 days.';
   };
 
-  // دالة الإضافة الذكية: إذا لم يكن العميل موجوداً تنشئه في جدول customers أولاً
   const addOrder = async (order: Omit<Invoice, 'id'>) => {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (!authUser) {
@@ -465,14 +527,11 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     let finalCustomerId: string | null = order.customerId;
-
-    // التحقق مما إذا كان العميل موجوداً في جدول العملاء
     const existingCustomer = inventory.find((c) => c.id === order.customerId || c.name.toLowerCase() === order.customerName.toLowerCase());
 
     if (existingCustomer) {
       finalCustomerId = existingCustomer.id;
     } else {
-      // إنشاء العميل تلقائياً في Supabase للحصول على UUID صحيح
       const { data: newCust, error: custError } = await supabase
         .from('customers')
         .insert([{
@@ -487,7 +546,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       if (!custError && newCust) {
         finalCustomerId = newCust.id;
       } else {
-        // إذا فشل إنشاء العميل، نتركه null لكي لا يتعارض مع الـ Foreign Key
         finalCustomerId = null;
       }
     }
@@ -502,16 +560,11 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       notes: order.notes || '',
     };
 
-    if (finalCustomerId) {
-      payload.customer_id = finalCustomerId;
-    }
-    if (order.paymentDate) {
-      payload.payment_date = order.paymentDate;
-    }
+    if (finalCustomerId) payload.customer_id = finalCustomerId;
+    if (order.paymentDate) payload.payment_date = order.paymentDate;
 
     const { error } = await supabase.from('invoices').insert([payload]);
     if (error) {
-      console.error('Supabase invoice insert error:', error);
       showToast(error.message || 'Error adding invoice', 'error');
     } else {
       showToast('Invoice created successfully', 'success');
@@ -632,7 +685,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
     const { error } = await supabase.from('notifications').insert([payload]);
     if (error) {
-      console.error('Notification error:', error);
       showToast(error.message || 'Error adding notification', 'error');
     } else {
       showToast('Action created successfully', 'success');
@@ -667,7 +719,15 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
   const resetAssistant = () => setAssistantMessages([]);
 
-  const updateSettings = (newSettings: Settings) => setSettings(newSettings);
+  const updateSettings = (newSettings: Settings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+      window.dispatchEvent(new Event('orderflow_currency_updated'));
+    } catch {
+      // ignore
+    }
+  };
 
   const value = useMemo(
     () => ({
@@ -685,6 +745,8 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       alerts: getAlerts(),
       forecastData,
       reportData,
+      formatCurrency,
+      currencySymbol,
       queryAssistant,
       addOrder,
       updateOrder,
@@ -700,7 +762,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       resetAssistant,
       updateSettings,
     }),
-    [assistantMessages, inventory, metrics, orders, shipping, settings, user, customerInsights, forecastData, reportData]
+    [assistantMessages, inventory, metrics, orders, shipping, settings, user, customerInsights, forecastData, reportData, formatCurrency, currencySymbol]
   );
 
   return (

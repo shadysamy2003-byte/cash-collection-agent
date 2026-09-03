@@ -1,24 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
+
+const SETTINGS_STORAGE_KEY = 'orderflow_app_settings_v1';
+
+export const currencySymbols: Record<string, string> = {
+  'USD ($)': '$',
+  'EUR (€)': '€',
+  'GBP (£)': '£',
+  'SAR (﷼)': 'SAR ',
+  'AED (د.إ)': 'AED ',
+  'EGP (ج.م)': 'EGP '
+};
 
 const SettingsPage = () => {
   const { settings, updateSettings } = useAppData();
-  const [form, setForm] = useState({
-    workspaceName: settings?.workspaceName || 'Cash Collection Agent',
-    timezone: settings?.timezone || 'UTC-5 Eastern Time',
-    currency: (settings as any)?.currency || 'USD ($)',
-    notificationEmail: (settings as any)?.notificationEmail || 'karim.adel@orderflow.tech',
-    largeInvoiceThreshold: (settings as any)?.largeInvoiceThreshold || '5000',
-    invoiceReminders: settings?.invoiceReminders ?? true,
-    dueSoonAlerts: settings?.dueSoonAlerts ?? true,
-    largeOverdueAlerts: settings?.largeOverdueAlerts ?? true,
+
+  const [form, setForm] = useState(() => {
+    try {
+      const localSaved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (localSaved) {
+        return JSON.parse(localSaved);
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      workspaceName: settings?.workspaceName || 'Cash Collection Agent',
+      timezone: settings?.timezone || 'UTC-5 Eastern Time',
+      currency: (settings as any)?.currency || 'USD ($)',
+      notificationEmail: (settings as any)?.notificationEmail || 'karim.adel@orderflow.tech',
+      largeInvoiceThreshold: (settings as any)?.largeInvoiceThreshold || '5000',
+      invoiceReminders: settings?.invoiceReminders ?? true,
+      dueSoonAlerts: settings?.dueSoonAlerts ?? true,
+      largeOverdueAlerts: settings?.largeOverdueAlerts ?? true,
+    };
   });
+
   const [message, setMessage] = useState('');
+
+  // استرجاع الإعدادات المحفوظة عند فتح الصفحة
+  useEffect(() => {
+    try {
+      const localSaved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (localSaved) {
+        setForm(JSON.parse(localSaved));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    // 1. حفظ الإعدادات في Context
     updateSettings(form as any);
-    setMessage('Settings saved successfully.');
+
+    // 2. الحفظ الثابت في LocalStorage
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(form));
+      localStorage.setItem('orderflow_active_currency', form.currency);
+      // إطلاق حدث تحديث لكل الصفحات
+      window.dispatchEvent(new Event('orderflow_currency_updated'));
+    } catch {
+      // ignore
+    }
+
+    setMessage('Settings saved successfully. Active currency updated across workspace.');
     setTimeout(() => setMessage(''), 4000);
   };
 
@@ -44,13 +92,13 @@ const SettingsPage = () => {
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
             <h2 className="text-lg font-semibold text-white">Workspace Details</h2>
             <p className="mt-1 text-xs text-slate-400">Manage basic company and regional parameters.</p>
-            
+
             <div className="mt-5 space-y-4 text-slate-300">
               <label className="block space-y-2 text-sm">
                 <span>Workspace Name</span>
                 <input
                   value={form.workspaceName}
-                  onChange={(event) => setForm((prev) => ({ ...prev, workspaceName: event.target.value }))}
+                  onChange={(event) => setForm((prev: any) => ({ ...prev, workspaceName: event.target.value }))}
                   placeholder="e.g. Acme Corp"
                   className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none transition focus:border-brand-500"
                 />
@@ -61,7 +109,7 @@ const SettingsPage = () => {
                   <span>Default Currency</span>
                   <select
                     value={form.currency}
-                    onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}
+                    onChange={(event) => setForm((prev: any) => ({ ...prev, currency: event.target.value }))}
                     className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-brand-500"
                   >
                     <option value="USD ($)">USD ($)</option>
@@ -77,7 +125,7 @@ const SettingsPage = () => {
                   <span>Timezone</span>
                   <select
                     value={form.timezone}
-                    onChange={(event) => setForm((prev) => ({ ...prev, timezone: event.target.value }))}
+                    onChange={(event) => setForm((prev: any) => ({ ...prev, timezone: event.target.value }))}
                     className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-brand-500"
                   >
                     <option>UTC-5 Eastern Time</option>
@@ -90,11 +138,11 @@ const SettingsPage = () => {
               </div>
 
               <label className="block space-y-2 text-sm">
-                <span>Large Overdue Alert Threshold ($)</span>
+                <span>Large Overdue Alert Threshold</span>
                 <input
                   type="number"
                   value={form.largeInvoiceThreshold}
-                  onChange={(event) => setForm((prev) => ({ ...prev, largeInvoiceThreshold: event.target.value }))}
+                  onChange={(event) => setForm((prev: any) => ({ ...prev, largeInvoiceThreshold: event.target.value }))}
                   placeholder="5000"
                   className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none transition focus:border-brand-500"
                 />
@@ -113,7 +161,7 @@ const SettingsPage = () => {
                 <input
                   type="email"
                   value={form.notificationEmail}
-                  onChange={(event) => setForm((prev) => ({ ...prev, notificationEmail: event.target.value }))}
+                  onChange={(event) => setForm((prev: any) => ({ ...prev, notificationEmail: event.target.value }))}
                   placeholder="alerts@yourdomain.com"
                   className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none transition focus:border-brand-500"
                 />
@@ -124,7 +172,7 @@ const SettingsPage = () => {
                   <input
                     type="checkbox"
                     checked={form.invoiceReminders}
-                    onChange={(event) => setForm((prev) => ({ ...prev, invoiceReminders: event.target.checked }))}
+                    onChange={(event) => setForm((prev: any) => ({ ...prev, invoiceReminders: event.target.checked }))}
                     className="h-5 w-5 rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-brand-500"
                   />
                   <div>
@@ -137,7 +185,7 @@ const SettingsPage = () => {
                   <input
                     type="checkbox"
                     checked={form.dueSoonAlerts}
-                    onChange={(event) => setForm((prev) => ({ ...prev, dueSoonAlerts: event.target.checked }))}
+                    onChange={(event) => setForm((prev: any) => ({ ...prev, dueSoonAlerts: event.target.checked }))}
                     className="h-5 w-5 rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-brand-500"
                   />
                   <div>
@@ -150,7 +198,7 @@ const SettingsPage = () => {
                   <input
                     type="checkbox"
                     checked={form.largeOverdueAlerts}
-                    onChange={(event) => setForm((prev) => ({ ...prev, largeOverdueAlerts: event.target.checked }))}
+                    onChange={(event) => setForm((prev: any) => ({ ...prev, largeOverdueAlerts: event.target.checked }))}
                     className="h-5 w-5 rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-brand-500"
                   />
                   <div>
