@@ -56,6 +56,10 @@ const getStatusBadgeClass = (status: InvoiceStatus) => {
 
 const STORAGE_KEY = 'orderflow_invoice_form_draft_v1';
 
+// كلاس Tailwind موحد لعرض أيقونة التقويم بيضاء ناصعة
+const dateInputStyle =
+  'mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200';
+
 const OrdersPage = () => {
   const { orders: invoices, inventory: customers, customerInsights, addOrder, updateOrder, deleteOrder } = useAppData();
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -65,7 +69,7 @@ const OrdersPage = () => {
   const [riskFilter, setRiskFilter] = useState<typeof riskOptions[number]>('All');
   const [sortKey, setSortKey] = useState<typeof sortOptions[number]>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  
+
   // حالة تسجيل السداد الفردي
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -82,7 +86,7 @@ const OrdersPage = () => {
   // حالة إيصال السداد (Payment Receipt Modal)
   const [receiptInvoice, setReceiptInvoice] = useState<Invoice | null>(null);
 
-  // نموذج مع استرجاع البيانات المحفوظة تلقائياً من localStorage
+  // استرجاع المسودة تلقائياً
   const [form, setForm] = useState<InvoiceFormState>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -107,28 +111,34 @@ const OrdersPage = () => {
 
   const [message, setMessage] = useState('');
 
-  // معالجة اتجاه الأسهم داخل حقول التاريخ لتعمل بالشكل الصحيح (أعلى = الشهر القادم)
+  // تعديل سلوك الأسهم لتقدم الشهور للأمام عند الضغط للأعلى
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLInputElement;
       if (target && target.type === 'date') {
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
           e.preventDefault();
-          const currentValue = target.value ? new Date(target.value) : new Date();
-          const monthChange = e.key === 'ArrowUp' ? 1 : -1;
-          currentValue.setMonth(currentValue.getMonth() + monthChange);
-          const newFormatted = formatDateInput(currentValue);
-          target.value = newFormatted;
-          target.dispatchEvent(new Event('input', { bubbles: true }));
-          target.dispatchEvent(new Event('change', { bubbles: true }));
+          const parts = (target.value || formatDateInput(new Date())).split('-').map(Number);
+          const currentYear = parts[0] || new Date().getFullYear();
+          const currentMonth = parts[1] ? parts[1] - 1 : new Date().getMonth();
+          const currentDay = parts[2] || 1;
+
+          // ArrowUp ينقلك للشهر التالي (أغسطس -> سبتمبر -> أكتوبر)
+          const targetDate = new Date(Date.UTC(currentYear, currentMonth + (e.key === 'ArrowUp' ? 1 : -1), currentDay));
+          const formatted = targetDate.toISOString().slice(0, 10);
+
+          target.value = formatted;
+          const event = new Event('input', { bubbles: true });
+          target.dispatchEvent(event);
         }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, []);
 
-  // حفظ بيانات النموذج في localStorage كلما حدث تغيير
+  // حفظ النموذج في localStorage تلقائياً
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
@@ -232,6 +242,11 @@ const OrdersPage = () => {
       return;
     }
 
+    if (new Date(form.dueDate) < new Date(form.issueDate)) {
+      setMessage('Due date must be the same or after the issue date.');
+      return;
+    }
+
     const duplicateInvoice = invoices.find(
       (invoice) => String(invoice.invoiceNumber).trim().toLowerCase() === form.invoiceNumber.trim().toLowerCase() && invoice.id !== editing?.id
     );
@@ -243,7 +258,7 @@ const OrdersPage = () => {
     const amount = String(form.amount).startsWith('$') ? form.amount : formatCurrency(parsedAmount);
     const customerId = form.customerId || editing?.customerId || `CUST-${Math.random().toString(36).slice(2, 6)}`;
     const paymentDateVal = form.status === 'Paid' ? form.paymentDate || formatDateInput(new Date()) : undefined;
-    
+
     const payload: Omit<Invoice, 'id'> = {
       invoiceNumber: form.invoiceNumber.trim(),
       customerId,
@@ -320,8 +335,8 @@ const OrdersPage = () => {
     const isFullSettlement = paid >= total;
     const newStatus: InvoiceStatus = isFullSettlement ? 'Paid' : 'Partially Paid';
     const auditNote = `[Payment Logged: ${formatCurrency(paid)} via ${paymentMethod}${paymentReference ? ` (Ref: ${paymentReference})` : ''} on ${paymentDate}]`;
-    const updatedNotes = paymentModalInvoice.notes 
-      ? `${paymentModalInvoice.notes}\n${auditNote}` 
+    const updatedNotes = paymentModalInvoice.notes
+      ? `${paymentModalInvoice.notes}\n${auditNote}`
       : auditNote;
 
     const updatedInv: Invoice = {
@@ -338,7 +353,6 @@ const OrdersPage = () => {
     setTimeout(() => setMessage(''), 4000);
   };
 
-  // معالج رفع وقراءة كشف الحساب البنكي مع إدارة فروق الرسوم
   const handleBankCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -389,7 +403,6 @@ const OrdersPage = () => {
           const cleanCustName = inv.customerName.toLowerCase();
           const diff = invAmount - amount;
 
-          // 1. تطابق صريح لرقم الفاتورة والمبلغ
           if (cleanDesc.includes(cleanInvNum) && Math.abs(diff) < 0.01) {
             bestInvoice = inv;
             matchType = 'Exact Invoice #';
@@ -397,7 +410,6 @@ const OrdersPage = () => {
             break;
           }
 
-          // 2. تطابق رقم الفاتورة مع فارق عمولة بنكية حتى 15 دولار
           if (cleanDesc.includes(cleanInvNum) && diff > 0 && diff <= 15) {
             bestInvoice = inv;
             matchType = 'Match with Bank Fee';
@@ -406,7 +418,6 @@ const OrdersPage = () => {
             break;
           }
 
-          // 3. تطابق اسم العميل والمبلغ
           if (description.toLowerCase().includes(cleanCustName) && Math.abs(diff) < 0.01) {
             bestInvoice = inv;
             matchType = 'Customer & Amount';
@@ -414,7 +425,6 @@ const OrdersPage = () => {
             break;
           }
 
-          // 4. تطابق المبلغ فقط
           if (Math.abs(diff) < 0.01 && !bestInvoice) {
             bestInvoice = inv;
             matchType = 'Amount Match';
@@ -448,7 +458,6 @@ const OrdersPage = () => {
     reader.readAsText(file);
   };
 
-  // تأكيد المطابقة مع قيد الرسوم البنكية إن وُجدت
   const handleConfirmReconciliation = () => {
     let reconciledCount = 0;
 
@@ -460,7 +469,7 @@ const OrdersPage = () => {
         const fee = tx.feeAmount || 0;
         const isFull = (paid + fee) >= total;
         const newStatus: InvoiceStatus = isFull ? 'Paid' : 'Partially Paid';
-        
+
         const feeAudit = fee > 0 ? ` [Bank Fee Deducted: ${formatCurrency(fee)}]` : '';
         const audit = `[Auto-Reconciled from Bank Feed: ${formatCurrency(paid)}${feeAudit} Ref: "${tx.description}" on ${tx.date}]`;
         const notes = inv.notes ? `${inv.notes}\n${audit}` : audit;
@@ -480,7 +489,6 @@ const OrdersPage = () => {
     setTimeout(() => setMessage(''), 4500);
   };
 
-  // تصدير تقرير التسوية البنكية
   const handleExportReconciliationReport = () => {
     const paidInvoices = invoices.filter((i) => i.status === 'Paid' || i.notes?.includes('Auto-Reconciled') || i.notes?.includes('Payment Logged'));
     if (paidInvoices.length === 0) {
@@ -709,7 +717,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* نموذج إنشاء أو تعديل الفاتورة بنظام التقويم الأصلي مع تصحيح اتجاه الأسهم */}
+        {/* نموذج إنشاء أو تعديل الفاتورة بأيقونات بيضاء ناصعة وضبط للاتجاهات */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
           <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow. (Drafts auto-saved)</p>
@@ -769,7 +777,7 @@ const OrdersPage = () => {
                   type="date"
                   value={form.issueDate}
                   onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  className={dateInputStyle}
                 />
               </label>
               <label className="block text-sm text-slate-300">
@@ -778,7 +786,7 @@ const OrdersPage = () => {
                   type="date"
                   value={form.dueDate}
                   onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  className={dateInputStyle}
                 />
               </label>
             </div>
@@ -801,7 +809,7 @@ const OrdersPage = () => {
                   type="date"
                   value={form.paymentDate}
                   onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, paymentDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  className={dateInputStyle}
                 />
               </label>
             )}
@@ -837,7 +845,7 @@ const OrdersPage = () => {
         </div>
       </section>
 
-      {/* نافذة تفاصيل الفاتورة المحددة */}
+      {/* تفاصيل الفاتورة المحددة */}
       {selectedInvoice && (
         <div className="rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <div className="flex items-center justify-between gap-4">
@@ -934,8 +942,8 @@ const OrdersPage = () => {
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-brand-500"
                 />
                 <span className="text-[11px] text-slate-400 mt-1 block">
-                  {parseAmount(paymentAmount) < parseAmount(paymentModalInvoice.amount) 
-                    ? `Remaining balance will be ${formatCurrency(parseAmount(paymentModalInvoice.amount) - parseAmount(paymentAmount))} (Partially Paid).` 
+                  {parseAmount(paymentAmount) < parseAmount(paymentModalInvoice.amount)
+                    ? `Remaining balance will be ${formatCurrency(parseAmount(paymentModalInvoice.amount) - parseAmount(paymentAmount))} (Partially Paid).`
                     : 'This payment will mark the invoice as Fully Paid.'}
                 </span>
               </div>
@@ -962,7 +970,7 @@ const OrdersPage = () => {
                     required
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-200"
                   />
                 </div>
               </div>
