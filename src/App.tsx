@@ -151,7 +151,7 @@ const App = () => {
           <div className="flex items-center gap-6">
             <Link to="/legal" className="hover:text-white transition">Terms & Privacy Policy</Link>
             <Link to="/pricing" className="hover:text-white transition">Pricing & Refunds</Link>
-            <a href="mailto:Shadysamy2003@gmail.com" className="hover:text-white transition">Support</a>
+            <a href="mailto:cashcollectionsupport@gmail.com" className="hover:text-white transition">Support</a>
           </div>
         </div>
       </footer>

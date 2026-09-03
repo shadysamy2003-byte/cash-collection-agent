@@ -36,8 +36,8 @@ export default function LegalPage() {
         <h2 style={{ color: '#f8fafc' }}>4. Contact Us</h2>
         <p>
           If you have any questions regarding these policies, please reach out to us at:{' '}
-          <a href="mailto:Shadysamy2003@gmail.com" style={{ color: '#38bdf8', textDecoration: 'underline' }}>
-            Cash Collection Support (Shadysamy2003@gmail.com)
+          <a href="mailto:cashcollectionsupport@gmail.com" style={{ color: '#38bdf8' }}>
+            cashcollectionsupport@gmail.com
           </a>
         </p>
       </section>
