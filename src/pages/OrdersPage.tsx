@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
-import type { Invoice, InvoiceStatus } from '../types';
+import type { Invoice, InvoiceStatus, Customer } from '../types';
 
 const invoiceStatuses: InvoiceStatus[] = ['Draft', 'Sent', 'Due Soon', 'Overdue', 'Partially Paid', 'Paid'];
 const searchStatuses = ['All', 'Draft', 'Sent', 'Due Soon', 'Overdue', 'Partially Paid', 'Paid'] as const;
@@ -30,7 +30,6 @@ interface InvoiceFormState {
   notes: string;
 }
 
-// استخراج الرقم الحقيقي مهما كان رمز العملة نصياً أو عربياً أو برمز خاص
 const parseAmount = (value: unknown): number => {
   if (typeof value === 'number') return Number.isNaN(value) ? 0 : value;
   if (typeof value === 'string') {
@@ -58,9 +57,7 @@ const getStatusBadgeClass = (status: InvoiceStatus) => {
   }
 };
 
-const STORAGE_KEY = 'orderflow_invoice_form_draft_v1';
-
-// مكون التقويم التفاعلي الموحد بالأيقونة البيضاء الناصعة
+// مكون التقويم التفاعلي الموحد
 const CustomDatePicker = ({
   value,
   onChange,
@@ -256,7 +253,8 @@ const OrdersPage = () => {
     addOrder, 
     updateOrder, 
     deleteOrder,
-    formatCurrency // استخدام دالة التنسيق الحية الموحدة
+    addInventoryItem,
+    formatCurrency
   } = useAppData();
 
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -280,35 +278,27 @@ const OrdersPage = () => {
 
   const [receiptInvoice, setReceiptInvoice] = useState<Invoice | null>(null);
 
-  const [form, setForm] = useState<InvoiceFormState>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return {
-      invoiceNumber: '',
-      customerId: '',
-      customerName: '',
-      amount: '',
-      issueDate: formatDateInput(new Date()),
-      dueDate: formatDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
-      status: 'Sent' as InvoiceStatus,
-      paymentDate: '',
-      notes: ''
-    };
+  // نافذة إضافة عميل سريع
+  const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustCompany, setNewCustCompany] = useState('');
+  const [newCustEmail, setNewCustEmail] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+
+  // نموذج الفاتورة يبدأ خالياً تماماً
+  const [form, setForm] = useState<InvoiceFormState>({
+    invoiceNumber: '',
+    customerId: '',
+    customerName: '',
+    amount: '',
+    issueDate: '',
+    dueDate: '',
+    status: 'Sent' as InvoiceStatus,
+    paymentDate: '',
+    notes: ''
   });
 
   const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
-    } catch {
-      // ignore
-    }
-  }, [form]);
 
   const dueCount = useMemo(
     () => invoices.filter((invoice) => invoice.status === 'Overdue' || invoice.status === 'Due Soon').length,
@@ -360,36 +350,25 @@ const OrdersPage = () => {
       customerId: '',
       customerName: '',
       amount: '',
-      issueDate: formatDateInput(new Date()),
-      dueDate: formatDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
+      issueDate: '',
+      dueDate: '',
       status: 'Sent',
       paymentDate: '',
       notes: ''
     });
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // ignore
-    }
   };
 
   const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const rawVal = parseAmount(form.amount);
 
-    if (
-      !form.invoiceNumber.trim() ||
-      !form.issueDate ||
-      !form.dueDate ||
-      rawVal <= 0 ||
-      (!form.customerId && !form.customerName.trim())
-    ) {
-      setMessage('Please enter a valid invoice amount and fill required fields.');
+    if (!form.invoiceNumber.trim() || !form.issueDate || !form.dueDate || rawVal <= 0) {
+      setMessage('Please fill required invoice fields, enter amount, and select dates.');
       return;
     }
 
-    if (customers.length > 0 && !form.customerId) {
-      setMessage('Please select a customer for the invoice.');
+    if (!form.customerId && !form.customerName.trim()) {
+      setMessage('Please select a customer for this invoice.');
       return;
     }
 
@@ -408,14 +387,14 @@ const OrdersPage = () => {
       return;
     }
 
-    const customerId = form.customerId || editing?.customerId || `CUST-${Math.random().toString(36).slice(2, 6)}`;
+    const customerId = form.customerId || editing?.customerId || '';
     const paymentDateVal = form.status === 'Paid' ? form.paymentDate || formatDateInput(new Date()) : undefined;
 
     const payload: Omit<Invoice, 'id'> = {
       invoiceNumber: form.invoiceNumber.trim(),
       customerId,
       customerName: form.customerName.trim(),
-      amount: String(rawVal), // نمرر الرقم نظيفاً ليتكفل الـ Context بتنسيقه
+      amount: String(rawVal),
       issueDate: form.issueDate,
       dueDate: form.dueDate,
       status: form.status,
@@ -462,6 +441,36 @@ const OrdersPage = () => {
       if (selectedInvoiceId === id) setSelectedInvoiceId(null);
       setMessage('Invoice deleted.');
     }
+  };
+
+  // معالجة إنشاء عميل جديد سريع
+  const handleCreateQuickCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustName.trim()) return;
+
+    await addInventoryItem({
+      name: newCustName.trim(),
+      company: newCustCompany.trim() || newCustName.trim(),
+      email: newCustEmail.trim() || 'billing@client.com',
+      phone: newCustPhone.trim() || '+201000000000',
+      outstanding: 0,
+      overdue: 0,
+      averageDaysToPay: 0,
+      reliability: 'Good',
+      paymentHistory: [],
+    } as any);
+
+    setForm((prev) => ({
+      ...prev,
+      customerName: newCustName.trim()
+    }));
+
+    setIsNewCustomerModalOpen(false);
+    setNewCustName('');
+    setNewCustCompany('');
+    setNewCustEmail('');
+    setNewCustPhone('');
+    setMessage(`Customer created and linked successfully.`);
   };
 
   const openPaymentModal = (invoice: Invoice) => {
@@ -608,37 +617,6 @@ const OrdersPage = () => {
     reader.readAsText(file);
   };
 
-  const handleConfirmReconciliation = () => {
-    let reconciledCount = 0;
-
-    parsedBankFeed.forEach((tx) => {
-      if (selectedMatches[tx.id] && tx.matchedInvoice) {
-        const inv = tx.matchedInvoice;
-        const total = parseAmount(inv.amount);
-        const paid = tx.amount;
-        const fee = tx.feeAmount || 0;
-        const isFull = paid + fee >= total;
-        const newStatus: InvoiceStatus = isFull ? 'Paid' : 'Partially Paid';
-
-        const feeAudit = fee > 0 ? ` [Bank Fee Deducted: ${formatCurrency(fee)}]` : '';
-        const audit = `[Auto-Reconciled from Bank Feed: ${formatCurrency(paid)}${feeAudit} Ref: "${tx.description}" on ${tx.date}]`;
-        const notes = inv.notes ? `${inv.notes}\n${audit}` : audit;
-
-        updateOrder({
-          ...inv,
-          status: newStatus,
-          paymentDate: isFull ? tx.date : inv.paymentDate,
-          notes
-        });
-        reconciledCount++;
-      }
-    });
-
-    setMessage(`Successfully reconciled ${reconciledCount} invoice(s) from bank statement.`);
-    setIsBankModalOpen(false);
-    setTimeout(() => setMessage(''), 4500);
-  };
-
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
@@ -741,7 +719,7 @@ const OrdersPage = () => {
           </div>
         </div>
 
-        {/* الجدول الرئيسي مع إظهار المبلغ المنسق من Context مباشرة */}
+        {/* الجدول الرئيسي */}
         <div className="mt-8 overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950/80">
           <table className="min-w-full divide-y divide-slate-800 text-sm">
             <thead className="bg-slate-900 text-slate-400">
@@ -833,10 +811,10 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* نموذج إضافة وتعديل الفواتير */}
+        {/* نموذج إنشاء وتعديل الفاتورة مع قائمة الاختيار والزر السريع */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
-          <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow. (Drafts auto-saved)</p>
+          <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow.</p>
           <form className="mt-6 space-y-4" onSubmit={handleSave}>
             <label className="block text-sm text-slate-300">
               Invoice #
@@ -844,39 +822,49 @@ const OrdersPage = () => {
                 value={form.invoiceNumber}
                 onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, invoiceNumber: event.target.value }))}
                 placeholder="e.g. INV-2026-001"
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
+                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500"
               />
             </label>
-            <label className="block text-sm text-slate-300">
-              Customer
-              {customers.length > 0 ? (
-                <select
-                  value={form.customerId}
-                  onChange={(event) => {
-                    const customerId = event.target.value;
-                    const customer = customers.find((item) => item.id === customerId);
-                    setForm((prev: InvoiceFormState) => ({
-                      ...prev,
-                      customerId,
-                      customerName: customer ? customer.name : prev.customerName
-                    }));
-                  }}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
+
+            {/* خانة العميل: قائمة منسدلة + زر إضافة عميل جديد سريع */}
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm text-slate-300">Customer Account</label>
+                <button
+                  type="button"
+                  onClick={() => setIsNewCustomerModalOpen(true)}
+                  className="text-xs font-semibold text-brand-400 hover:text-brand-300 transition"
                 >
-                  <option value="">Select customer</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>{customer.name}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={form.customerName}
-                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, customerName: event.target.value }))}
-                  placeholder="Enter customer name"
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
-                />
+                  + Add New Customer
+                </button>
+              </div>
+              <select
+                value={form.customerId}
+                onChange={(event) => {
+                  const customerId = event.target.value;
+                  const customer = customers.find((item) => item.id === customerId);
+                  setForm((prev: InvoiceFormState) => ({
+                    ...prev,
+                    customerId,
+                    customerName: customer ? customer.name : ''
+                  }));
+                }}
+                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-brand-500"
+              >
+                <option value="">-- Choose registered customer --</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name} {customer.company && customer.company !== customer.name ? `(${customer.company})` : ''}
+                  </option>
+                ))}
+              </select>
+              {customers.length === 0 && (
+                <p className="mt-1.5 text-xs text-amber-400/80">
+                  ⚠️ No customers registered yet. Click <strong>"+ Add New Customer"</strong> to create one.
+                </p>
               )}
-            </label>
+            </div>
+
             <label className="block text-sm text-slate-300">
               Amount
               <input
@@ -888,12 +876,14 @@ const OrdersPage = () => {
                 className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
               />
             </label>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm text-slate-300">Issue date</label>
                 <CustomDatePicker
                   value={form.issueDate}
                   onChange={(val) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: val }))}
+                  placeholder="Select issue date"
                 />
               </div>
               <div>
@@ -901,9 +891,11 @@ const OrdersPage = () => {
                 <CustomDatePicker
                   value={form.dueDate}
                   onChange={(val) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: val }))}
+                  placeholder="Select due date"
                 />
               </div>
             </div>
+
             <label className="block text-sm text-slate-300">
               Status
               <select
@@ -916,15 +908,18 @@ const OrdersPage = () => {
                 ))}
               </select>
             </label>
+
             {form.status === 'Paid' && (
               <div>
                 <label className="block text-sm text-slate-300">Payment date</label>
                 <CustomDatePicker
                   value={form.paymentDate}
                   onChange={(val) => setForm((prev: InvoiceFormState) => ({ ...prev, paymentDate: val }))}
+                  placeholder="Select payment date"
                 />
               </div>
             )}
+
             <label className="block text-sm text-slate-300">
               Notes
               <textarea
@@ -935,6 +930,7 @@ const OrdersPage = () => {
                 className="mt-2 w-full min-h-[70px] resize-none overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none transition focus:border-brand-500"
               />
             </label>
+
             <div className="flex flex-wrap gap-3">
               <button type="submit" className="rounded-3xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-400">
                 {editing ? 'Save invoice' : 'Create invoice'}
@@ -957,6 +953,84 @@ const OrdersPage = () => {
         </div>
       </section>
 
+      {/* نافذة إضافة عميل جديد سريع */}
+      {isNewCustomerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-md rounded-[2.5rem] border border-slate-800 bg-slate-900 p-7 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-xl font-bold text-white">Create New Customer</h3>
+              <button
+                onClick={() => setIsNewCustomerModalOpen(false)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateQuickCustomer} className="mt-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Customer Name *</label>
+                <input
+                  required
+                  value={newCustName}
+                  onChange={(e) => setNewCustName(e.target.value)}
+                  placeholder="e.g. Acme Corporation"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Company / Legal Entity</label>
+                <input
+                  value={newCustCompany}
+                  onChange={(e) => setNewCustCompany(e.target.value)}
+                  placeholder="e.g. Acme Industries Ltd"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Billing Email</label>
+                <input
+                  type="email"
+                  value={newCustEmail}
+                  onChange={(e) => setNewCustEmail(e.target.value)}
+                  placeholder="accounts@client.com"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={newCustPhone}
+                  onChange={(e) => setNewCustPhone(e.target.value)}
+                  placeholder="+20 100 000 0000"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsNewCustomerModalOpen(false)}
+                  className="rounded-2xl border border-slate-700 px-5 py-2.5 font-medium text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-brand-500 px-6 py-2.5 font-semibold text-white hover:bg-brand-400 transition"
+                >
+                  Save & Select
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* نافذة تفاصيل الفاتورة */}
       {selectedInvoice && (
         <div className="rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
@@ -973,17 +1047,15 @@ const OrdersPage = () => {
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <div className="rounded-3xl bg-slate-900/80 p-5">
               <p className="text-sm text-slate-400">Amount</p>
-              <p className="mt-3 text-3xl font-semibold text-white">
-                {selectedInvoice.amount}
-              </p>
+              <p className="mt-3 text-3xl font-semibold text-white">{selectedInvoice.amount}</p>
             </div>
             <div className="rounded-3xl bg-slate-900/80 p-5">
               <p className="text-sm text-slate-400">Issue date</p>
-              <p className="mt-3 text-lg font-semibold text-white">{selectedInvoice.issueDate}</p>
+              <p className="mt-3 text-lg font-semibold text-white">{selectedInvoice.issueDate || '—'}</p>
             </div>
             <div className="rounded-3xl bg-slate-900/80 p-5">
               <p className="text-sm text-slate-400">Due date</p>
-              <p className="mt-3 text-lg font-semibold text-white">{selectedInvoice.dueDate}</p>
+              <p className="mt-3 text-lg font-semibold text-white">{selectedInvoice.dueDate || '—'}</p>
             </div>
           </div>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -1020,7 +1092,7 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* نافذة تسجيل السداد */}
+      {/* نافذة تسجيل الدفع */}
       {paymentModalInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-lg rounded-[2rem] border border-slate-800 bg-slate-900 p-7 shadow-2xl">
