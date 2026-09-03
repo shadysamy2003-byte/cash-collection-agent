@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import type { Invoice, InvoiceStatus } from '../types';
 
@@ -16,6 +16,18 @@ interface BankTransaction {
   matchType?: 'Exact Invoice #' | 'Customer & Amount' | 'Amount Match' | 'Match with Bank Fee';
   matchConfidence?: number;
   feeAmount?: number;
+}
+
+interface InvoiceFormState {
+  invoiceNumber: string;
+  customerId: string;
+  customerName: string;
+  amount: string;
+  issueDate: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  paymentDate: string;
+  notes: string;
 }
 
 const parseAmount = (value: unknown): number => {
@@ -41,6 +53,8 @@ const getStatusBadgeClass = (status: InvoiceStatus) => {
       return 'bg-slate-800 text-slate-300 border border-slate-700';
   }
 };
+
+const STORAGE_KEY = 'orderflow_invoice_form_draft_v1';
 
 const OrdersPage = () => {
   const { orders: invoices, inventory: customers, customerInsights, addOrder, updateOrder, deleteOrder } = useAppData();
@@ -68,18 +82,39 @@ const OrdersPage = () => {
   // حالة إيصال السداد (Payment Receipt Modal)
   const [receiptInvoice, setReceiptInvoice] = useState<Invoice | null>(null);
 
-  const [form, setForm] = useState({
-    invoiceNumber: '',
-    customerId: '',
-    customerName: '',
-    amount: '',
-    issueDate: '',
-    dueDate: '',
-    status: 'Sent' as InvoiceStatus,
-    paymentDate: '',
-    notes: ''
+  // نموذج مع استرجاع البيانات المحفوظة تلقائياً من localStorage
+  const [form, setForm] = useState<InvoiceFormState>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      invoiceNumber: '',
+      customerId: '',
+      customerName: '',
+      amount: '',
+      issueDate: '',
+      dueDate: '',
+      status: 'Sent' as InvoiceStatus,
+      paymentDate: '',
+      notes: ''
+    };
   });
+
   const [message, setMessage] = useState('');
+
+  // حفظ بيانات النموذج في localStorage كلما حدث تغيير
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+    } catch {
+      // ignore
+    }
+  }, [form]);
 
   const dueCount = useMemo(
     () => invoices.filter((invoice) => invoice.status === 'Overdue' || invoice.status === 'Due Soon').length,
@@ -131,8 +166,8 @@ const OrdersPage = () => {
       });
   }, [invoices, customerMap, insightMap, riskFilter, searchQuery, sortDirection, sortKey, statusFilter]);
 
-  const resetForm = () =>
-    setForm({
+  const resetForm = () => {
+    const fresh: InvoiceFormState = {
       invoiceNumber: '',
       customerId: '',
       customerName: '',
@@ -142,7 +177,14 @@ const OrdersPage = () => {
       status: 'Sent',
       paymentDate: '',
       notes: ''
-    });
+    };
+    setForm(fresh);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  };
 
   const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -651,16 +693,16 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* نموذج إنشاء أو تعديل الفاتورة */}
+        {/* نموذج إنشاء أو تعديل الفاتورة مع حفظ مسودة تلقائي */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
-          <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow.</p>
+          <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow. (Drafts auto-saved)</p>
           <form className="mt-6 space-y-4" onSubmit={handleSave}>
             <label className="block text-sm text-slate-300">
               Invoice #
               <input
                 value={form.invoiceNumber}
-                onChange={(event) => setForm((prev) => ({ ...prev, invoiceNumber: event.target.value }))}
+                onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, invoiceNumber: event.target.value }))}
                 placeholder="e.g. INV-2026-001"
                 className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
               />
@@ -673,7 +715,7 @@ const OrdersPage = () => {
                   onChange={(event) => {
                     const customerId = event.target.value;
                     const customer = customers.find((item) => item.id === customerId);
-                    setForm((prev) => ({
+                    setForm((prev: InvoiceFormState) => ({
                       ...prev,
                       customerId,
                       customerName: customer ? customer.name : prev.customerName
@@ -689,7 +731,7 @@ const OrdersPage = () => {
               ) : (
                 <input
                   value={form.customerName}
-                  onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
+                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, customerName: event.target.value }))}
                   placeholder="Enter customer name"
                   className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
                 />
@@ -699,7 +741,7 @@ const OrdersPage = () => {
               Amount
               <input
                 value={form.amount}
-                onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+                onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, amount: event.target.value }))}
                 placeholder="$0.00"
                 className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
               />
@@ -710,7 +752,7 @@ const OrdersPage = () => {
                 <input
                   type="date"
                   value={form.issueDate}
-                  onChange={(event) => setForm((prev) => ({ ...prev, issueDate: event.target.value }))}
+                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: event.target.value }))}
                   className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
                 />
               </label>
@@ -719,7 +761,7 @@ const OrdersPage = () => {
                 <input
                   type="date"
                   value={form.dueDate}
-                  onChange={(event) => setForm((prev) => ({ ...prev, dueDate: event.target.value }))}
+                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: event.target.value }))}
                   className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
                 />
               </label>
@@ -728,7 +770,7 @@ const OrdersPage = () => {
               Status
               <select
                 value={form.status}
-                onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as InvoiceStatus }))}
+                onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, status: event.target.value as InvoiceStatus }))}
                 className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
               >
                 {invoiceStatuses.map((status) => (
@@ -742,7 +784,7 @@ const OrdersPage = () => {
                 <input
                   type="date"
                   value={form.paymentDate}
-                  onChange={(event) => setForm((prev) => ({ ...prev, paymentDate: event.target.value }))}
+                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, paymentDate: event.target.value }))}
                   className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none"
                 />
               </label>
@@ -752,7 +794,7 @@ const OrdersPage = () => {
               <textarea
                 rows={2}
                 value={form.notes}
-                onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, notes: event.target.value }))}
                 placeholder="Add invoice notes or follow-up details..."
                 className="mt-2 w-full min-h-[70px] resize-none overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none transition focus:border-brand-500"
               />
