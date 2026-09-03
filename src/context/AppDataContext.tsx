@@ -56,7 +56,7 @@ export type AppDataContextValue = {
   shipping: NotificationItem[];
   assistantMessages: AssistantMessage[];
   settings: Settings;
-  formatCurrency: (amountInUSD: number, historicalRate?: number) => string;
+  formatCurrency: (amountInUSD: number) => string;
   currencySymbol: string;
   metrics: {
     revenue: number;
@@ -128,11 +128,10 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const currencySymbol = currencySymbols[activeCurrencyKey] || '$';
   const currentExchangeRate = exchangeRates[activeCurrencyKey] || 1;
 
-  // دالة تنسيق المبلغ مع دعم سعر الصرف التاريخي أو الحالي
+  // دالة تنسيق المبلغ بناءً على سعر الصرف الحالي
   const formatCurrency = useMemo(() => {
-    return (amountInUSD: number, historicalRate?: number) => {
-      const rate = historicalRate !== undefined && historicalRate !== null ? historicalRate : currentExchangeRate;
-      const converted = (amountInUSD || 0) * rate;
+    return (amountInUSD: number) => {
+      const converted = (amountInUSD || 0) * currentExchangeRate;
       const formatted = converted.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
@@ -241,19 +240,30 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return map;
   }, [inventory]);
 
-  // توليد الفواتير مع حساب سعر الصرف التاريخي المحفوظ في قاعدة البيانات
+  // توليد الفواتير مع تحويل المبلغ بدقة بناءً على سعر الصرف وسعر الصرف التاريخي المخزّن
   const orders: Invoice[] = useMemo(() => {
     return rawInvoices.map((db) => {
       const custId = db.customer_id || db.customerId || '';
-      const historicalRate = db.exchange_rate !== undefined && db.exchange_rate !== null ? Number(db.exchange_rate) : currentExchangeRate;
-      const baseAmountUSD = Number(db.amount) || 0;
+      const storedAmount = Number(db.amount) || 0;
+      const invoiceRate = db.exchange_rate !== undefined && db.exchange_rate !== null && Number(db.exchange_rate) > 0 
+        ? Number(db.exchange_rate) 
+        : 48.50; // سعر الصرف الافتراضي وقت إنشاء الفواتير المحلية
+
+      // تحويل القيمة من العملة الأصلية إلى USD ثم إلى العملة الحالية المحددة في الإعدادات
+      const amountInUSD = storedAmount / invoiceRate;
+      const convertedAmount = amountInUSD * currentExchangeRate;
+
+      const formatted = convertedAmount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
       return {
         id: db.id,
         invoiceNumber: db.invoice_number || db.invoiceNumber || '',
         customerId: custId,
         customerName: db.customer_name || customerMap.get(custId) || 'Unknown Customer',
-        amount: formatCurrency(baseAmountUSD, historicalRate),
+        amount: `${currencySymbol}${formatted}`,
         issueDate: db.issue_date || db.issueDate || '',
         dueDate: db.due_date || db.dueDate || '',
         status: db.status || 'Sent',
@@ -265,7 +275,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         followUpOn: db.follow_up_on || db.followUpOn || undefined,
       };
     });
-  }, [rawInvoices, customerMap, formatCurrency, currentExchangeRate]);
+  }, [rawInvoices, customerMap, currencySymbol, currentExchangeRate]);
 
   const signup = async (name: string, email: string, password: string) => {
     if (!name.trim() || !email.trim() || !password) {
@@ -531,7 +541,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return 'Rule-based insight: ask about highest risk customers, invoices due today, or cash expected in the next 30 days.';
   };
 
-  // حفظ الفاتورة مع تثبيت سعر الصرف التاريخي وقت الإنشاء
   const addOrder = async (order: Omit<Invoice, 'id'>) => {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (!authUser) {
@@ -553,7 +562,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       user_id: authUser.id,
       invoice_number: order.invoiceNumber,
       amount: baseAmountUSD,
-      exchange_rate: currentExchangeRate, // تثبيت سعر الصرف التاريخي
+      exchange_rate: currentExchangeRate,
       issue_date: order.issueDate,
       due_date: order.dueDate,
       status: order.status,
@@ -567,7 +576,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     if (error) {
       showToast(error.message || 'Error adding invoice', 'error');
     } else {
-      showToast('Invoice created successfully with historical exchange rate', 'success');
+      showToast('Invoice created successfully', 'success');
       await fetchData();
     }
   };
