@@ -13,8 +13,9 @@ interface BankTransaction {
   description: string;
   amount: number;
   matchedInvoice?: Invoice;
-  matchType?: 'Exact Invoice #' | 'Customer & Amount' | 'Amount Match';
+  matchType?: 'Exact Invoice #' | 'Customer & Amount' | 'Amount Match' | 'Match with Bank Fee';
   matchConfidence?: number;
+  feeAmount?: number;
 }
 
 const parseAmount = (value: unknown): number => {
@@ -58,11 +59,14 @@ const OrdersPage = () => {
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentDate, setPaymentDate] = useState(formatDateInput(new Date()));
 
-  // حالة استيراد كشف الحساب البنكي والمطابقة الآلية
+  // حالة استيراد كشف الحساب البنكي
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
   const [parsedBankFeed, setParsedBankFeed] = useState<BankTransaction[]>([]);
   const [selectedMatches, setSelectedMatches] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // حالة إيصال السداد (Payment Receipt Modal)
+  const [receiptInvoice, setReceiptInvoice] = useState<Invoice | null>(null);
 
   const [form, setForm] = useState({
     invoiceNumber: '',
@@ -262,19 +266,21 @@ const OrdersPage = () => {
       ? `${paymentModalInvoice.notes}\n${auditNote}` 
       : auditNote;
 
-    updateOrder({
+    const updatedInv: Invoice = {
       ...paymentModalInvoice,
       status: newStatus,
       paymentDate: isFullSettlement ? paymentDate : paymentModalInvoice.paymentDate,
       notes: updatedNotes
-    });
+    };
 
+    updateOrder(updatedInv);
     setMessage(`Payment of ${formatCurrency(paid)} recorded for ${paymentModalInvoice.invoiceNumber}.`);
     setPaymentModalInvoice(null);
+    setReceiptInvoice(updatedInv);
     setTimeout(() => setMessage(''), 4000);
   };
 
-  // معالج رفع وقراءة كشف الحساب البنكي ومطابقته آلياً
+  // معالج رفع وقراءة كشف الحساب البنكي مع إدارة فروق الرسوم
   const handleBankCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -315,33 +321,35 @@ const OrdersPage = () => {
         let bestInvoice: Invoice | undefined;
         let matchType: BankTransaction['matchType'];
         let matchConfidence = 0;
+        let feeAmount = 0;
 
-        // خوارزمية المطابقة الذكية
         for (const inv of openInvoices) {
           if (matchedMap.has(inv.id)) continue;
           const invAmount = parseAmount(inv.amount);
           const cleanInvNum = inv.invoiceNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
           const cleanDesc = description.toLowerCase().replace(/[^a-z0-9]/g, '');
           const cleanCustName = inv.customerName.toLowerCase();
+          const diff = invAmount - amount;
 
-          // 1. تطابق رقم الفاتورة والمبلغ (Exact Match)
-          if (cleanDesc.includes(cleanInvNum) && Math.abs(invAmount - amount) < 0.01) {
+          // 1. تطابق صريح لرقم الفاتورة والمبلغ
+          if (cleanDesc.includes(cleanInvNum) && Math.abs(diff) < 0.01) {
             bestInvoice = inv;
             matchType = 'Exact Invoice #';
             matchConfidence = 100;
             break;
           }
 
-          // 2. تطابق رقم الفاتورة (حتى مع فارق جزئي في السداد)
-          if (cleanDesc.includes(cleanInvNum)) {
+          // 2. تطابق رقم الفاتورة مع فارق عمولة بنكية حتى 15 دولار
+          if (cleanDesc.includes(cleanInvNum) && diff > 0 && diff <= 15) {
             bestInvoice = inv;
-            matchType = 'Exact Invoice #';
-            matchConfidence = 90;
+            matchType = 'Match with Bank Fee';
+            matchConfidence = 95;
+            feeAmount = Number(diff.toFixed(2));
             break;
           }
 
           // 3. تطابق اسم العميل والمبلغ
-          if (description.toLowerCase().includes(cleanCustName) && Math.abs(invAmount - amount) < 0.01) {
+          if (description.toLowerCase().includes(cleanCustName) && Math.abs(diff) < 0.01) {
             bestInvoice = inv;
             matchType = 'Customer & Amount';
             matchConfidence = 85;
@@ -349,7 +357,7 @@ const OrdersPage = () => {
           }
 
           // 4. تطابق المبلغ فقط
-          if (Math.abs(invAmount - amount) < 0.01 && !bestInvoice) {
+          if (Math.abs(diff) < 0.01 && !bestInvoice) {
             bestInvoice = inv;
             matchType = 'Amount Match';
             matchConfidence = 65;
@@ -368,7 +376,8 @@ const OrdersPage = () => {
           amount,
           matchedInvoice: bestInvoice,
           matchType,
-          matchConfidence
+          matchConfidence,
+          feeAmount
         });
       }
 
@@ -381,7 +390,7 @@ const OrdersPage = () => {
     reader.readAsText(file);
   };
 
-  // تنفيذ المطابقة الآلية وتحديث قيود الفواتير دفعة واحدة
+  // تأكيد المطابقة مع قيد الرسوم البنكية إن وُجدت
   const handleConfirmReconciliation = () => {
     let reconciledCount = 0;
 
@@ -390,9 +399,12 @@ const OrdersPage = () => {
         const inv = tx.matchedInvoice;
         const total = parseAmount(inv.amount);
         const paid = tx.amount;
-        const isFull = paid >= total;
+        const fee = tx.feeAmount || 0;
+        const isFull = (paid + fee) >= total;
         const newStatus: InvoiceStatus = isFull ? 'Paid' : 'Partially Paid';
-        const audit = `[Auto-Reconciled from Bank Feed: ${formatCurrency(paid)} Ref: "${tx.description}" on ${tx.date}]`;
+        
+        const feeAudit = fee > 0 ? ` [Bank Fee Deducted: ${formatCurrency(fee)}]` : '';
+        const audit = `[Auto-Reconciled from Bank Feed: ${formatCurrency(paid)}${feeAudit} Ref: "${tx.description}" on ${tx.date}]`;
         const notes = inv.notes ? `${inv.notes}\n${audit}` : audit;
 
         updateOrder({
@@ -410,6 +422,35 @@ const OrdersPage = () => {
     setTimeout(() => setMessage(''), 4500);
   };
 
+  // تصدير تقرير التسوية البنكية
+  const handleExportReconciliationReport = () => {
+    const paidInvoices = invoices.filter((i) => i.status === 'Paid' || i.notes?.includes('Auto-Reconciled') || i.notes?.includes('Payment Logged'));
+    if (paidInvoices.length === 0) {
+      alert('No reconciled or settled invoices to export.');
+      return;
+    }
+
+    const headers = ['Invoice #', 'Customer', 'Amount', 'Settlement Date', 'Status', 'Audit Reference / Notes'];
+    const rows = paidInvoices.map((inv) => [
+      `"${inv.invoiceNumber}"`,
+      `"${inv.customerName}"`,
+      `"${parseAmount(inv.amount)}"`,
+      `"${inv.paymentDate || inv.dueDate}"`,
+      `"${inv.status}"`,
+      `"${(inv.notes || '').replace(/"/g, '""').replace(/\n/g, ' | ')}"`
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Reconciliation_Audit_Report_${formatDateInput(new Date())}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
@@ -419,6 +460,13 @@ const OrdersPage = () => {
             <h1 className="mt-3 text-3xl font-semibold text-white">Manage overdue and upcoming invoices</h1>
           </div>
           <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleExportReconciliationReport}
+              className="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white"
+            >
+              📊 Export Audit CSV
+            </button>
             <input
               type="file"
               accept=".csv"
@@ -544,6 +592,18 @@ const OrdersPage = () => {
                   </td>
                   <td className="px-6 py-5 text-right text-slate-200">
                     <div className="flex items-center justify-end gap-2">
+                      {invoice.status === 'Paid' && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setReceiptInvoice(invoice);
+                          }}
+                          className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/20"
+                        >
+                          Receipt
+                        </button>
+                      )}
                       {invoice.status !== 'Paid' && (
                         <button
                           type="button"
@@ -749,6 +809,15 @@ const OrdersPage = () => {
             </div>
           </div>
           <div className="mt-6 flex flex-wrap gap-3">
+            {selectedInvoice.status === 'Paid' && (
+              <button
+                type="button"
+                onClick={() => setReceiptInvoice(selectedInvoice)}
+                className="rounded-3xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
+              >
+                View Official Receipt
+              </button>
+            )}
             {selectedInvoice.status !== 'Paid' && (
               <button
                 type="button"
@@ -773,7 +842,7 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* نافذة تسجيل السداد اليدوي الفردي */}
+      {/* نافذة تسجيل السداد اليدوي */}
       {paymentModalInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-lg rounded-[2rem] border border-slate-800 bg-slate-900 p-7 shadow-2xl">
@@ -836,8 +905,7 @@ const OrdersPage = () => {
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500"
-                  >
-                  </input>
+                  />
                 </div>
               </div>
 
@@ -872,17 +940,16 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* نافذة المطابقة البنكية الذكية لكشوف الحسابات (Bank Feed Auto-Reconciliation Modal) */}
+      {/* نافذة المطابقة البنكية مع إدارة الرسوم والعمولات */}
       {isBankModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-[2.5rem] border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden">
-            {/* رأس النافذة */}
             <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
               <div>
                 <span className="text-xs uppercase tracking-[0.25em] text-brand-400 font-semibold">Automated Reconciliation Engine</span>
                 <h3 className="text-2xl font-bold text-white mt-1">Bank Statement Reconciliation</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Found {parsedBankFeed.length} transaction(s). {Object.values(selectedMatches).filter(Boolean).length} matched automatically.
+                  Found {parsedBankFeed.length} transaction(s). {Object.values(selectedMatches).filter(Boolean).length} matched automatically with bank fee tolerance support.
                 </p>
               </div>
               <button
@@ -893,7 +960,6 @@ const OrdersPage = () => {
               </button>
             </div>
 
-            {/* جدول حركات البنك واقتراحات المطابقة */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {parsedBankFeed.length === 0 ? (
                 <p className="text-center py-10 text-slate-400 text-sm">No valid transaction lines detected in this statement.</p>
@@ -907,7 +973,7 @@ const OrdersPage = () => {
                         <th className="px-4 py-3 text-left">Bank Memo / Reference</th>
                         <th className="px-4 py-3 text-right">Inflow ($)</th>
                         <th className="px-4 py-3 text-left">Matched Invoice</th>
-                        <th className="px-4 py-3 text-center">Confidence</th>
+                        <th className="px-4 py-3 text-center">Confidence & Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800 bg-slate-900/60">
@@ -933,7 +999,14 @@ const OrdersPage = () => {
                             {tx.matchedInvoice ? (
                               <div>
                                 <span className="font-semibold text-white">{tx.matchedInvoice.invoiceNumber}</span>
-                                <span className="text-slate-400 block text-[11px] truncate">{tx.matchedInvoice.customerName} ({formatCurrency(parseAmount(tx.matchedInvoice.amount))})</span>
+                                <span className="text-slate-400 block text-[11px] truncate">
+                                  {tx.matchedInvoice.customerName} ({formatCurrency(parseAmount(tx.matchedInvoice.amount))})
+                                </span>
+                                {(tx.feeAmount ?? 0) > 0 && (
+                                  <span className="text-amber-400 block text-[10px] font-medium">
+                                    Fee: {formatCurrency(tx.feeAmount ?? 0)}
+                                  </span>
+                                )}
                               </div>
                             ) : (
                               <span className="text-slate-500 italic">No matching invoice found</span>
@@ -962,7 +1035,6 @@ const OrdersPage = () => {
               )}
             </div>
 
-            {/* أسفل النافذة وأزرار التنفيذ */}
             <div className="p-6 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between">
               <span className="text-xs text-slate-400">
                 {Object.values(selectedMatches).filter(Boolean).length} transaction(s) selected for reconciliation.
@@ -984,6 +1056,79 @@ const OrdersPage = () => {
                   Reconcile Selected ({Object.values(selectedMatches).filter(Boolean).length})
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* نافذة إيصال السداد الرسمي (Payment Receipt Modal) */}
+      {receiptInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-lg rounded-[2.5rem] border border-slate-800 bg-slate-900 p-8 shadow-2xl">
+            <div className="flex justify-between items-start border-b border-slate-800 pb-5">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                  Payment Confirmed
+                </span>
+                <h3 className="text-2xl font-bold text-white mt-3">Official Payment Receipt</h3>
+                <p className="text-xs text-slate-400 mt-1">Receipt Ref: REC-{receiptInvoice.invoiceNumber}</p>
+              </div>
+              <button
+                onClick={() => setReceiptInvoice(null)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4 text-xs">
+              <div className="rounded-2xl bg-slate-950/80 p-4 border border-slate-800 space-y-2.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Customer Name:</span>
+                  <span className="font-semibold text-white">{receiptInvoice.customerName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Invoice Number:</span>
+                  <span className="font-semibold text-white">{receiptInvoice.invoiceNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Settlement Date:</span>
+                  <span className="font-semibold text-slate-300">{receiptInvoice.paymentDate || receiptInvoice.dueDate}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-slate-800">
+                  <span className="text-sm font-semibold text-slate-300">Amount Paid:</span>
+                  <span className="text-lg font-bold text-emerald-400">{formatCurrency(parseAmount(receiptInvoice.amount))}</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-950/40 p-4 border border-slate-800">
+                <span className="text-slate-400 block mb-1 font-medium">Audit Trail & Verification:</span>
+                <p className="text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed">
+                  {receiptInvoice.notes || 'Payment reconciled with full settlement.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Payment Receipt for ${receiptInvoice.customerName}\nInvoice: ${receiptInvoice.invoiceNumber}\nAmount: ${formatCurrency(parseAmount(receiptInvoice.amount))}\nDate: ${receiptInvoice.paymentDate || receiptInvoice.dueDate}\nStatus: Settled & Reconciled.`
+                  );
+                  alert('Receipt summary copied to clipboard!');
+                }}
+                className="rounded-2xl border border-slate-700 px-5 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+              >
+                📋 Copy Receipt Summary
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceiptInvoice(null)}
+                className="rounded-2xl bg-brand-500 px-6 py-2.5 text-xs font-semibold text-white hover:bg-brand-400"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
