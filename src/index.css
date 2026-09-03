@@ -49,3 +49,15 @@ body, input, button, textarea, select {
   scrollbar-width: thin;
   scrollbar-color: #1e293b #090d16;
 }
+
+/* تخصيص القوائم المنسدلة وخياراتها باللون الداكن */
+select option {
+  background-color: #0b0f19;
+  color: #e2e8f0;
+  padding: 10px 14px;
+}
+
+select option:checked {
+  background-color: #1e293b;
+  color: #38bdf8;
+}
