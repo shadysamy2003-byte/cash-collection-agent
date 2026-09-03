@@ -107,6 +107,27 @@ const OrdersPage = () => {
 
   const [message, setMessage] = useState('');
 
+  // معالجة اتجاه الأسهم داخل حقول التاريخ لتعمل بالشكل الصحيح (أعلى = الشهر القادم)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.type === 'date') {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const currentValue = target.value ? new Date(target.value) : new Date();
+          const monthChange = e.key === 'ArrowUp' ? 1 : -1;
+          currentValue.setMonth(currentValue.getMonth() + monthChange);
+          const newFormatted = formatDateInput(currentValue);
+          target.value = newFormatted;
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+          target.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, []);
+
   // حفظ بيانات النموذج في localStorage كلما حدث تغيير
   useEffect(() => {
     try {
@@ -192,8 +213,8 @@ const OrdersPage = () => {
 
     if (
       !form.invoiceNumber.trim() ||
-      !form.issueDate.trim() ||
-      !form.dueDate.trim() ||
+      !form.issueDate ||
+      !form.dueDate ||
       !String(form.amount).trim() ||
       (!form.customerId && !form.customerName.trim())
     ) {
@@ -228,8 +249,8 @@ const OrdersPage = () => {
       customerId,
       customerName: form.customerName.trim(),
       amount,
-      issueDate: form.issueDate.trim(),
-      dueDate: form.dueDate.trim(),
+      issueDate: form.issueDate,
+      dueDate: form.dueDate,
       status: form.status,
       paymentDate: paymentDateVal,
       notes: form.notes,
@@ -688,7 +709,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* نموذج إنشاء أو تعديل الفاتورة بحقول تاريخ نصية منظمة وآمنة */}
+        {/* نموذج إنشاء أو تعديل الفاتورة بنظام التقويم الأصلي مع تصحيح اتجاه الأسهم */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
           <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow. (Drafts auto-saved)</p>
@@ -743,23 +764,21 @@ const OrdersPage = () => {
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm text-slate-300">
-                Issue date (YYYY-MM-DD)
+                Issue date
                 <input
-                  type="text"
-                  placeholder="2026-09-03"
+                  type="date"
                   value={form.issueDate}
                   onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, issueDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
+                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                 />
               </label>
               <label className="block text-sm text-slate-300">
-                Due date (YYYY-MM-DD)
+                Due date
                 <input
-                  type="text"
-                  placeholder="2026-09-10"
+                  type="date"
                   value={form.dueDate}
                   onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, dueDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
+                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                 />
               </label>
             </div>
@@ -777,13 +796,12 @@ const OrdersPage = () => {
             </label>
             {form.status === 'Paid' && (
               <label className="block text-sm text-slate-300">
-                Payment date (YYYY-MM-DD)
+                Payment date
                 <input
-                  type="text"
-                  placeholder="2026-09-03"
+                  type="date"
                   value={form.paymentDate}
                   onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, paymentDate: event.target.value }))}
-                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
+                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                 />
               </label>
             )}
@@ -938,14 +956,13 @@ const OrdersPage = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Date (YYYY-MM-DD)</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Date</label>
                   <input
-                    type="text"
+                    type="date"
                     required
-                    placeholder="2026-09-03"
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
                   />
                 </div>
               </div>
