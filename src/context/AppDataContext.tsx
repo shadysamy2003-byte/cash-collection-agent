@@ -14,8 +14,8 @@ export const currencySymbols: Record<string, string> = {
   'EGP (ج.م)': 'ج.م ',
 };
 
-// أسعار الصرف الحالية مقارنة بالدولار الأمريكي (العملة الأساسية المخزنة)
-const exchangeRates: Record<string, number> = {
+// أسعار الصرف الافتراضية كاحتياطي في حال عدم توفر الاتصال بالإنترنت
+const defaultExchangeRates: Record<string, number> = {
   'USD ($)': 1,
   'EUR (€)': 0.92,
   'GBP (£)': 0.79,
@@ -103,6 +103,9 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const [shipping, setShipping] = useState<NotificationItem[]>([]);
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
   
+  // حالة لأسعار الصرف الحية من API
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(defaultExchangeRates);
+  
   const [settings, setSettings] = useState<Settings>(() => {
     try {
       const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -124,11 +127,31 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  // جلب أسعار الصرف الحية والحديثة لحظياً عند تشغيل التطبيق
+  useEffect(() => {
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.rates) {
+          setExchangeRates({
+            'USD ($)': 1,
+            'EUR (€)': data.rates.EUR || 0.92,
+            'GBP (£)': data.rates.GBP || 0.79,
+            'SAR (﷼)': data.rates.SAR || 3.75,
+            'AED (د.إ)': data.rates.AED || 3.67,
+            'EGP (ج.م)': data.rates.EGP || 48.50,
+          });
+        }
+      })
+      .catch(() => {
+        // الاستمرار بالأسعار الافتراضية في حال عدم الاتصال
+      });
+  }, []);
+
   const activeCurrencyKey = (settings as any)?.currency || 'USD ($)';
   const currencySymbol = currencySymbols[activeCurrencyKey] || '$';
   const currentExchangeRate = exchangeRates[activeCurrencyKey] || 1;
 
-  // دالة تنسيق المبلغ بناءً على سعر الصرف الحالي
   const formatCurrency = useMemo(() => {
     return (amountInUSD: number) => {
       const converted = (amountInUSD || 0) * currentExchangeRate;
@@ -240,18 +263,12 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return map;
   }, [inventory]);
 
-  // توليد الفواتير مع تحويل المبلغ بدقة بناءً على سعر الصرف وسعر الصرف التاريخي المخزّن
+  // توليد الفواتير مع الاعتماد على السعر الحي وسعر الصرف وقت التسجيل
   const orders: Invoice[] = useMemo(() => {
     return rawInvoices.map((db) => {
       const custId = db.customer_id || db.customerId || '';
-      const storedAmount = Number(db.amount) || 0;
-      const invoiceRate = db.exchange_rate !== undefined && db.exchange_rate !== null && Number(db.exchange_rate) > 0 
-        ? Number(db.exchange_rate) 
-        : 48.50; // سعر الصرف الافتراضي وقت إنشاء الفواتير المحلية
-
-      // تحويل القيمة من العملة الأصلية إلى USD ثم إلى العملة الحالية المحددة في الإعدادات
-      const amountInUSD = storedAmount / invoiceRate;
-      const convertedAmount = amountInUSD * currentExchangeRate;
+      const baseAmountUSD = Number(db.amount) || 0;
+      const convertedAmount = baseAmountUSD * currentExchangeRate;
 
       const formatted = convertedAmount.toLocaleString(undefined, {
         minimumFractionDigits: 2,
@@ -541,6 +558,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return 'Rule-based insight: ask about highest risk customers, invoices due today, or cash expected in the next 30 days.';
   };
 
+  // تسجيل الفاتورة مع حفظ سعر الصرف الحي والدقيق وقت التسجيل
   const addOrder = async (order: Omit<Invoice, 'id'>) => {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (!authUser) {
@@ -562,7 +580,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       user_id: authUser.id,
       invoice_number: order.invoiceNumber,
       amount: baseAmountUSD,
-      exchange_rate: currentExchangeRate,
+      exchange_rate: currentExchangeRate, // تثبيت سعر الصرف الحي وقت التسجيل
       issue_date: order.issueDate,
       due_date: order.dueDate,
       status: order.status,
@@ -576,7 +594,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     if (error) {
       showToast(error.message || 'Error adding invoice', 'error');
     } else {
-      showToast('Invoice created successfully', 'success');
+      showToast('Invoice created successfully with live exchange rate', 'success');
       await fetchData();
     }
   };
