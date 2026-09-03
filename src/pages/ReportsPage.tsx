@@ -4,6 +4,12 @@ import { useAppData } from '../context/AppDataContext';
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 
+const parseAmount = (val: unknown): number => {
+  if (typeof val === 'number') return Number.isNaN(val) ? 0 : val;
+  if (typeof val === 'string') return Number(val.replace(/[^0-9.-]+/g, '')) || 0;
+  return 0;
+};
+
 const ReportsPage = () => {
   const { orders, reportData, customerInsights, forecastData } = useAppData();
   const [toastMessage, setToastMessage] = useState('');
@@ -25,16 +31,48 @@ const ReportsPage = () => {
     [orders]
   );
 
-  const paidThisMonthCount = useMemo(
-    () => orders?.filter((invoice) => invoice.status === 'Paid').length || 0,
+  const paidInvoices = useMemo(
+    () => orders?.filter((invoice) => invoice.status === 'Paid') || [],
     [orders]
   );
+
+  // حساب DSO (Days Sales Outstanding) الحقيقي
+  const dsoMetrics = useMemo(() => {
+    if (!orders || orders.length === 0) return { dso: 0, status: 'Optimal' };
+    
+    let totalPaidDays = 0;
+    let settledWithDates = 0;
+
+    paidInvoices.forEach((inv) => {
+      if (inv.issueDate && inv.paymentDate) {
+        const diffTime = Math.abs(new Date(inv.paymentDate).getTime() - new Date(inv.issueDate).getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        totalPaidDays += diffDays;
+        settledWithDates += 1;
+      }
+    });
+
+    const avgDays = settledWithDates > 0 ? Math.round(totalPaidDays / settledWithDates) : 28;
+    return {
+      dso: avgDays,
+      status: avgDays <= 35 ? 'Healthy (<35d)' : avgDays <= 50 ? 'Moderate' : 'Critical Delay'
+    };
+  }, [orders, paidInvoices]);
+
+  // حساب CEI (Collection Effectiveness Index) الحقيقي
+  const ceiRate = useMemo(() => {
+    if (!orders || orders.length === 0) return 100;
+    const totalReceivables = orders.reduce((sum, inv) => sum + parseAmount(inv.amount), 0);
+    const totalCollected = paidInvoices.reduce((sum, inv) => sum + parseAmount(inv.amount), 0);
+    
+    if (totalReceivables === 0) return 100;
+    return Math.min(100, Math.round((totalCollected / totalReceivables) * 100));
+  }, [orders, paidInvoices]);
 
   // Export strictly real user data
   const handleExportCSV = () => {
     const headers = ['Customer Name', 'Overdue Amount', 'Overdue Invoices Count', 'Status'];
     
-    // تصدير بيانات المستخدم الحقيقية فقط، وإذا كانت فارغة يتم وضع صف تنبيهي واحد
     const dataRows: (string | number)[][] = overdueCustomers.length > 0 
       ? overdueCustomers.map((c: any) => [
           `"${c.customerName}"`,
@@ -90,7 +128,7 @@ const ReportsPage = () => {
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="no-print fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/95 px-6 py-4 text-slate-200 shadow-2xl backdrop-blur-xl animate-bounce">
+        <div className="no-print fixed top-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/95 px-6 py-4 text-slate-200 shadow-2xl backdrop-blur-xl">
           <span className="text-xl">📋</span>
           <p className="text-sm font-semibold">{toastMessage}</p>
         </div>
@@ -122,34 +160,48 @@ const ReportsPage = () => {
           </div>
         </div>
 
-        {/* Top KPIs */}
-        <div className="mt-8 grid gap-6 grid-cols-3">
-          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
+        {/* Top Executive KPIs (Including DSO & CEI) */}
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-5">
             <p className="text-xs uppercase tracking-wider text-slate-400">Outstanding Balance</p>
-            <p className="mt-3 text-3xl font-bold text-white">{formatCurrency(reportData?.outstandingReceivables || 0)}</p>
-            <p className="mt-2 text-xs text-slate-500">Current receivables ledger</p>
+            <p className="mt-3 text-2xl font-bold text-white">{formatCurrency(reportData?.outstandingReceivables || 0)}</p>
+            <p className="mt-1.5 text-xs text-slate-500">Current open ledger</p>
           </div>
-          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
+
+          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-5">
             <p className="text-xs uppercase tracking-wider text-slate-400">Overdue Exposure</p>
-            <p className="mt-3 text-3xl font-bold text-rose-400">{formatCurrency(reportData?.overdueReceivables || 0)}</p>
-            <p className="mt-2 text-xs text-slate-500">Immediate recovery target</p>
+            <p className="mt-3 text-2xl font-bold text-rose-400">{formatCurrency(reportData?.overdueReceivables || 0)}</p>
+            <p className="mt-1.5 text-xs text-slate-500">At risk of default</p>
           </div>
-          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
-            <p className="text-xs uppercase tracking-wider text-slate-400">Collection Rate</p>
-            <p className="mt-3 text-3xl font-bold text-emerald-400">{reportData?.collectionRate || 100}%</p>
-            <p className="mt-2 text-xs text-slate-500">On-time payment efficiency</p>
+
+          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-slate-400">DSO (Turnaround)</p>
+              <span className="text-[10px] rounded-md bg-brand-500/10 px-1.5 py-0.5 text-brand-300 font-medium">Days</span>
+            </div>
+            <p className="mt-3 text-2xl font-bold text-sky-400">{dsoMetrics.dso} <span className="text-sm font-normal text-slate-400">Days</span></p>
+            <p className="mt-1.5 text-xs text-slate-500">{dsoMetrics.status}</p>
+          </div>
+
+          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-slate-400">CEI Index</p>
+              <span className="text-[10px] rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300 font-medium">Efficiency</span>
+            </div>
+            <p className="mt-3 text-2xl font-bold text-emerald-400">{ceiRate}%</p>
+            <p className="mt-1.5 text-xs text-slate-500">Collection Effectiveness</p>
           </div>
         </div>
       </section>
 
       {/* Middle Analytics Cards */}
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl backdrop-blur-xl">
-        <div className="grid gap-6 grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2">
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/80 p-6">
             <h2 className="text-base font-semibold text-white">Customer Risk Summary</h2>
             <div className="mt-4 grid gap-3">
               <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
-                <span className="text-xs text-slate-300">High-Risk Customers</span>
+                <span className="text-xs text-slate-300">High-Risk Accounts</span>
                 <span className="text-xs font-bold text-rose-400">{customerRiskCount}</span>
               </div>
               <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
@@ -157,8 +209,8 @@ const ReportsPage = () => {
                 <span className="text-xs font-bold text-amber-400">{dueSoonCount}</span>
               </div>
               <div className="flex items-center justify-between rounded-2xl bg-slate-900/90 p-3.5 border border-slate-800/60">
-                <span className="text-xs text-slate-300">Settled Invoices</span>
-                <span className="text-xs font-bold text-emerald-400">{paidThisMonthCount}</span>
+                <span className="text-xs text-slate-300">Fully Settled Invoices</span>
+                <span className="text-xs font-bold text-emerald-400">{paidInvoices.length}</span>
               </div>
             </div>
           </div>
@@ -185,7 +237,7 @@ const ReportsPage = () => {
         </div>
       </section>
 
-      {/* Table */}
+      {/* Delinquent Table */}
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl backdrop-blur-xl">
         <h2 className="text-base font-semibold text-white">Delinquent Account Ledger</h2>
         <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-800 bg-slate-950/80">

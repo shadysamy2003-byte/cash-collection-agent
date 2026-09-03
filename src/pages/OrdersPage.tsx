@@ -41,6 +41,13 @@ const OrdersPage = () => {
   const [sortKey, setSortKey] = useState<typeof sortOptions[number]>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
+  // حالة نافذة تسجيل السداد (Payment Modal)
+  const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentDate, setPaymentDate] = useState(formatDateInput(new Date()));
+
   const [form, setForm] = useState({
     invoiceNumber: '',
     customerId: '',
@@ -157,7 +164,7 @@ const OrdersPage = () => {
 
     const amount = String(form.amount).startsWith('$') ? form.amount : formatCurrency(parsedAmount);
     const customerId = form.customerId || editing?.customerId || `CUST-${Math.random().toString(36).slice(2, 6)}`;
-    const paymentDate = form.status === 'Paid' ? form.paymentDate || formatDateInput(new Date()) : undefined;
+    const paymentDateVal = form.status === 'Paid' ? form.paymentDate || formatDateInput(new Date()) : undefined;
     
     const payload: Omit<Invoice, 'id'> = {
       invoiceNumber: form.invoiceNumber.trim(),
@@ -167,7 +174,7 @@ const OrdersPage = () => {
       issueDate: form.issueDate,
       dueDate: form.dueDate,
       status: form.status,
-      paymentDate,
+      paymentDate: paymentDateVal,
       notes: form.notes,
       priority: editing?.priority,
       priorityReason: editing?.priorityReason,
@@ -212,9 +219,43 @@ const OrdersPage = () => {
     }
   };
 
-  const handleMarkPaid = (invoice: Invoice) => {
-    updateOrder({ ...invoice, status: 'Paid', paymentDate: formatDateInput(new Date()) });
-    setMessage(`Marked ${invoice.invoiceNumber} as paid.`);
+  const openPaymentModal = (invoice: Invoice) => {
+    setPaymentModalInvoice(invoice);
+    setPaymentAmount(String(parseAmount(invoice.amount)));
+    setPaymentReference('');
+    setPaymentMethod('Bank Transfer');
+    setPaymentDate(formatDateInput(new Date()));
+  };
+
+  const handleRecordPaymentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentModalInvoice) return;
+
+    const total = parseAmount(paymentModalInvoice.amount);
+    const paid = parseAmount(paymentAmount);
+
+    if (paid <= 0) {
+      alert('Please enter a valid payment amount.');
+      return;
+    }
+
+    const isFullSettlement = paid >= total;
+    const newStatus: InvoiceStatus = isFullSettlement ? 'Paid' : 'Partially Paid';
+    const auditNote = `[Payment Logged: ${formatCurrency(paid)} via ${paymentMethod}${paymentReference ? ` (Ref: ${paymentReference})` : ''} on ${paymentDate}]`;
+    const updatedNotes = paymentModalInvoice.notes 
+      ? `${paymentModalInvoice.notes}\n${auditNote}` 
+      : auditNote;
+
+    updateOrder({
+      ...paymentModalInvoice,
+      status: newStatus,
+      paymentDate: isFullSettlement ? paymentDate : paymentModalInvoice.paymentDate,
+      notes: updatedNotes
+    });
+
+    setMessage(`Payment of ${formatCurrency(paid)} recorded for ${paymentModalInvoice.invoiceNumber}.`);
+    setPaymentModalInvoice(null);
+    setTimeout(() => setMessage(''), 4000);
   };
 
   return (
@@ -331,13 +372,25 @@ const OrdersPage = () => {
                   </td>
                   <td className="px-6 py-5 text-right text-slate-200">
                     <div className="flex items-center justify-end gap-2">
+                      {invoice.status !== 'Paid' && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openPaymentModal(invoice);
+                          }}
+                          className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+                        >
+                          Record Payment
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
                           handleEdit(invoice);
                         }}
-                        className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-brand-500 hover:text-white"
+                        className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-brand-500 hover:text-white"
                       >
                         Edit
                       </button>
@@ -347,7 +400,7 @@ const OrdersPage = () => {
                           event.stopPropagation();
                           handleDelete(invoice.id);
                         }}
-                        className="rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/15"
+                        className="rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/15"
                       >
                         Delete
                       </button>
@@ -366,6 +419,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
+        {/* Invoice Form (Create/Edit) */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
           <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow.</p>
@@ -466,11 +520,6 @@ const OrdersPage = () => {
               <textarea
                 rows={2}
                 value={form.notes}
-                onInput={(event) => {
-                  const target = event.currentTarget;
-                  target.style.height = 'auto';
-                  target.style.height = `${target.scrollHeight}px`;
-                }}
                 onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
                 placeholder="Add invoice notes or follow-up details..."
                 className="mt-2 w-full min-h-[70px] resize-none overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none transition focus:border-brand-500"
@@ -499,6 +548,7 @@ const OrdersPage = () => {
         </div>
       </section>
 
+      {/* Selected Invoice Details View */}
       {selectedInvoice && (
         <div className="rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <div className="flex items-center justify-between gap-4">
@@ -528,26 +578,124 @@ const OrdersPage = () => {
             </div>
           </div>
           <div className="mt-6 flex flex-wrap gap-3">
-            {selectedInvoice?.status !== 'Paid' && (
+            {selectedInvoice.status !== 'Paid' && (
               <button
                 type="button"
-                onClick={() => selectedInvoice && handleMarkPaid(selectedInvoice)}
-                className="rounded-3xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                onClick={() => openPaymentModal(selectedInvoice)}
+                className="rounded-3xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
               >
-                Mark paid
+                Record Payment
               </button>
             )}
             <button
               type="button"
-              onClick={() => selectedInvoice && handleEdit(selectedInvoice)}
+              onClick={() => handleEdit(selectedInvoice)}
               className="rounded-3xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm text-slate-200 transition hover:border-brand-500 hover:text-white"
             >
               Edit invoice
             </button>
           </div>
           <div className="mt-6 rounded-3xl bg-slate-900/80 p-5">
-            <p className="text-sm text-slate-400">Notes</p>
+            <p className="text-sm text-slate-400">Notes & Payment Audit Trail</p>
             <p className="mt-3 text-sm text-slate-300 whitespace-pre-wrap">{selectedInvoice.notes || 'No notes added.'}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Record Payment Modal */}
+      {paymentModalInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-lg rounded-[2rem] border border-slate-800 bg-slate-900 p-7 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-white">Record Invoice Payment</h3>
+                <p className="text-xs text-slate-400 mt-1">Invoice: {paymentModalInvoice.invoiceNumber} • {paymentModalInvoice.customerName}</p>
+              </div>
+              <button
+                onClick={() => setPaymentModalInvoice(null)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordPaymentSubmit} className="mt-6 space-y-4">
+              <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800/80 flex justify-between items-center">
+                <span className="text-xs text-slate-400">Total Invoice Amount:</span>
+                <span className="text-base font-bold text-white">{formatCurrency(parseAmount(paymentModalInvoice.amount))}</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Amount ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-brand-500"
+                />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  {parseAmount(paymentAmount) < parseAmount(paymentModalInvoice.amount) 
+                    ? `Remaining balance will be ${formatCurrency(parseAmount(paymentModalInvoice.amount) - parseAmount(paymentAmount))} (Partially Paid).` 
+                    : 'This payment will mark the invoice as Fully Paid.'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-brand-500"
+                  >
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Check">Check</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="ACH / Direct Debit">ACH / Direct</option>
+                    <option value="Cash">Cash</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Transaction / Reference # (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. TR-9482751 / Check #302"
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentModalInvoice(null)}
+                  className="rounded-2xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 transition"
+                >
+                  Confirm & Reconcile
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
