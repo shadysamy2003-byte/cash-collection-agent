@@ -23,3 +23,29 @@ body, input, button, textarea, select {
 ::selection {
   background: rgba(37,99,235,0.35);
 }
+
+/* تخصيص مظهر شريط التمرير ليصبح رفيعاً وداكناً بالكامل */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090d16;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* دعم متصفح Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1e293b #090d16;
+}
