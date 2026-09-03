@@ -41,21 +41,6 @@ const mapInvoiceFromDb = (db: any, customersMap: Map<string, string>): Invoice =
   };
 };
 
-// تحويل سجل الفاتورة من الواجهة إلى صيغة متوافقة مع جداول Supabase
-const mapInvoiceToDb = (inv: Partial<Invoice>, userId?: string) => {
-  const payload: any = {};
-  if (userId) payload.user_id = userId;
-  if (inv.invoiceNumber !== undefined) payload.invoice_number = inv.invoiceNumber;
-  if (inv.customerId !== undefined) payload.customer_id = inv.customerId;
-  if (inv.amount !== undefined) payload.amount = parseCurrency(inv.amount);
-  if (inv.issueDate !== undefined) payload.issue_date = inv.issueDate;
-  if (inv.dueDate !== undefined) payload.due_date = inv.dueDate;
-  if (inv.status !== undefined) payload.status = inv.status;
-  if (inv.paymentDate !== undefined) payload.payment_date = inv.paymentDate;
-  if (inv.notes !== undefined) payload.notes = inv.notes;
-  return payload;
-};
-
 // تحويل سجل العميل من Supabase إلى الواجهة
 const mapCustomerFromDb = (db: any): Customer => ({
   id: db.id,
@@ -162,7 +147,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // حساب الفترة التجريبية (7 أيام)
     const createdAt = authUser.created_at || new Date().toISOString();
     const createdDate = new Date(createdAt);
     const now = new Date();
@@ -472,15 +456,65 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return 'Rule-based insight: ask about highest risk customers, invoices due today, or cash expected in the next 30 days.';
   };
 
+  // دالة الإضافة الذكية: إذا لم يكن العميل موجوداً تنشئه في جدول customers أولاً
   const addOrder = async (order: Omit<Invoice, 'id'>) => {
     const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) return;
-    const dbPayload = mapInvoiceToDb(order, authUser.id);
-    const { error } = await supabase.from('invoices').insert([dbPayload]);
-    if (error) {
-      showToast('Error adding invoice', 'error');
+    if (!authUser) {
+      showToast('You must be logged in to create an invoice.', 'error');
+      return;
+    }
+
+    let finalCustomerId: string | null = order.customerId;
+
+    // التحقق مما إذا كان العميل موجوداً في جدول العملاء
+    const existingCustomer = inventory.find((c) => c.id === order.customerId || c.name.toLowerCase() === order.customerName.toLowerCase());
+
+    if (existingCustomer) {
+      finalCustomerId = existingCustomer.id;
     } else {
-      showToast('Invoice added successfully', 'success');
+      // إنشاء العميل تلقائياً في Supabase للحصول على UUID صحيح
+      const { data: newCust, error: custError } = await supabase
+        .from('customers')
+        .insert([{
+          user_id: authUser.id,
+          name: order.customerName || 'Client Account',
+          company: order.customerName || 'Direct Billing',
+          reliability: 'Good',
+        }])
+        .select()
+        .single();
+
+      if (!custError && newCust) {
+        finalCustomerId = newCust.id;
+      } else {
+        // إذا فشل إنشاء العميل، نتركه null لكي لا يتعارض مع الـ Foreign Key
+        finalCustomerId = null;
+      }
+    }
+
+    const payload: any = {
+      user_id: authUser.id,
+      invoice_number: order.invoiceNumber,
+      amount: parseCurrency(order.amount),
+      issue_date: order.issueDate,
+      due_date: order.dueDate,
+      status: order.status,
+      notes: order.notes || '',
+    };
+
+    if (finalCustomerId) {
+      payload.customer_id = finalCustomerId;
+    }
+    if (order.paymentDate) {
+      payload.payment_date = order.paymentDate;
+    }
+
+    const { error } = await supabase.from('invoices').insert([payload]);
+    if (error) {
+      console.error('Supabase invoice insert error:', error);
+      showToast(error.message || 'Error adding invoice', 'error');
+    } else {
+      showToast('Invoice created successfully', 'success');
       await fetchData();
     }
   };
@@ -505,7 +539,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const deleteOrder = async (orderId: string) => {
     const { error } = await supabase.from('invoices').delete().eq('id', orderId);
     if (error) {
-      showToast('Error deleting invoice', 'error');
+      showToast(error.message || 'Error deleting invoice', 'error');
     } else {
       showToast('Invoice deleted successfully', 'info');
       await fetchData();
@@ -542,7 +576,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     };
     const { error } = await supabase.from('customers').insert([payload]);
     if (error) {
-      showToast('Error adding customer', 'error');
+      showToast(error.message || 'Error adding customer', 'error');
     } else {
       showToast('Customer added successfully', 'success');
       await fetchData();
@@ -562,7 +596,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     };
     const { error } = await supabase.from('customers').update(payload).eq('id', item.id);
     if (error) {
-      showToast('Error updating customer', 'error');
+      showToast(error.message || 'Error updating customer', 'error');
     } else {
       showToast('Customer updated successfully', 'success');
       await fetchData();
@@ -572,7 +606,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const deleteInventoryItem = async (itemId: string) => {
     const { error } = await supabase.from('customers').delete().eq('id', itemId);
     if (error) {
-      showToast('Error deleting customer', 'error');
+      showToast(error.message || 'Error deleting customer', 'error');
     } else {
       showToast('Customer deleted successfully', 'info');
       await fetchData();
