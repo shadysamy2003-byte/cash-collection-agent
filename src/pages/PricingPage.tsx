@@ -1,5 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
+
+declare global {
+  interface Window {
+    Paddle?: any;
+  }
+}
+
+const PADDLE_CLIENT_TOKEN = 'live_f8d11a44516ea2c3d10428f1ecb';
 
 const plans = [
   {
@@ -11,8 +19,8 @@ const plans = [
     description: 'For small teams that need reliable invoice collection',
     features: ['Invoice tracking', 'Due date reminders', 'Customer risk scores'],
     popular: false,
-    checkoutMonthlyUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/060f698d-6514-4f12-967b-c6e5a1360613',
-    checkoutAnnualUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/721b4325-7ef9-487e-aaff-54fe8cabb2b0'
+    priceIdMonthly: 'pri_01m1kr7j9e247m5m7gx6gkja82',
+    priceIdAnnual: 'pri_01m1kr92g0dzfz7yrpy2j9pxrx',
   },
   {
     title: 'Growth',
@@ -23,8 +31,8 @@ const plans = [
     description: 'For growing businesses with recurring receivables',
     features: ['Cash flow forecasting', 'Priority collections', 'Team workflows'],
     popular: true,
-    checkoutMonthlyUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/9cfbafc6-714c-427c-900b-70427e0b21d1',
-    checkoutAnnualUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/baca8fd0-e98e-4ad6-bdf7-d593388a9481'
+    priceIdMonthly: 'pri_01m1kradmabmq0w03jnjx3sfpq',
+    priceIdAnnual: 'pri_01m1krdpsbtvtyv28n0mdzdnsc',
   },
   {
     title: 'Enterprise',
@@ -35,21 +43,48 @@ const plans = [
     description: 'For finance teams that need scale and automation',
     features: ['Dedicated onboarding', 'Custom integrations', 'Priority support'],
     popular: false,
-    checkoutMonthlyUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/0e3d8efc-0735-44bf-8597-e72a277479d7',
-    checkoutAnnualUrl: 'https://cash-collection-agent.lemonsqueezy.com/checkout/buy/e96bf248-66b3-4a68-b92f-4dbf15cc9853'
-  }
+    priceIdMonthly: 'pri_01m1krf9z8r3txz5q8ch8rn906',
+    priceIdAnnual: 'pri_01m1krge6jgxvdtsvptf8cnpg2',
+  },
 ];
 
 const PricingPage = () => {
   const [isAnnual, setIsAnnual] = useState(false);
   const { user } = useAppData();
 
-  const handleCheckout = (checkoutUrl: string) => {
-    const url = new URL(checkoutUrl);
-    if (user?.email) {
-      url.searchParams.set('checkout[email]', user.email);
+  useEffect(() => {
+    // تحميل مكتبة Paddle برمجياً لبيئة Vite
+    const script = document.createElement('script');
+    script.src = 'https://cdn.paddle.com/paddle/v2/paddle.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.Paddle) {
+        window.Paddle.Initialize({
+          token: PADDLE_CLIENT_TOKEN,
+        });
+      }
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  const handleCheckout = (priceId: string) => {
+    if (window.Paddle) {
+      window.Paddle.Checkout.open({
+        items: [{ priceId, quantity: 1 }],
+        customer: user?.email ? { email: user.email } : undefined,
+        settings: {
+          displayMode: 'overlay',
+          theme: 'dark',
+          successUrl: `${window.location.origin}/dashboard`,
+        },
+      });
+    } else {
+      console.warn('Paddle SDK is still loading...');
     }
-    window.open(url.toString(), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -91,7 +126,7 @@ const PricingPage = () => {
       <section className="grid gap-6 lg:grid-cols-3">
         {plans.map((plan) => {
           const displayPrice = isAnnual ? plan.priceAnnualMonthlyEquivalent : plan.priceMonthly;
-          const targetUrl = isAnnual ? plan.checkoutAnnualUrl : plan.checkoutMonthlyUrl;
+          const targetPriceId = isAnnual ? plan.priceIdAnnual : plan.priceIdMonthly;
 
           return (
             <div
@@ -111,7 +146,7 @@ const PricingPage = () => {
               <div className="space-y-6">
                 <div>
                   <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{plan.title}</p>
-                  <div className="mt-4 flex items-baseline gap-1.5">
+                  <div className="mt-4 flex items-empty items-baseline gap-1.5">
                     <span className="text-4xl font-semibold text-white">
                       {plan.currency}{displayPrice}
                     </span>
@@ -138,7 +173,7 @@ const PricingPage = () => {
               <div className="mt-8">
                 <button
                   type="button"
-                  onClick={() => handleCheckout(targetUrl)}
+                  onClick={() => handleCheckout(targetPriceId)}
                   className={`inline-flex w-full items-center justify-center rounded-2xl px-4 py-3.5 text-sm font-semibold transition ${
                     plan.popular
                       ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400'
