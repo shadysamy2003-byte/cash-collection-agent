@@ -34,7 +34,7 @@ export default function LegalPage() {
       {/* 4. Contact Information */}
       <section>
         <h2 style={{ color: '#f8fafc' }}>4. Contact Us</h2>
-        <p>If you have any questions regarding these policies, please reach out to us at: <a href="mailto:Shadysamy2003@gmail.com" style={{ color: '#38bdf8' }}>Shadysamy2003@gmail.com</a></p>
+        <p>If you have any questions regarding these policies, please reach out to us at: <a href="mailto:Shadysamy2003@gmail.com" style={{ color: '#38bdf8' }}>Cash Collection Support</a></p>
       </section>
     </div>
   );
