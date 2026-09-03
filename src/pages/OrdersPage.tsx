@@ -30,13 +30,17 @@ interface InvoiceFormState {
   notes: string;
 }
 
+// استخراج الرقم الحقيقي مهما كان رمز العملة نصياً أو عربياً أو برمز خاص
 const parseAmount = (value: unknown): number => {
   if (typeof value === 'number') return Number.isNaN(value) ? 0 : value;
-  if (typeof value === 'string') return Number(value.replace(/[^0-9.-]+/g, '')) || 0;
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^0-9.-]/g, '');
+    const parsed = parseFloat(cleaned);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
   return 0;
 };
 
-const formatCurrency = (value: number) => `$${(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
 const getStatusBadgeClass = (status: InvoiceStatus) => {
@@ -56,7 +60,7 @@ const getStatusBadgeClass = (status: InvoiceStatus) => {
 
 const STORAGE_KEY = 'orderflow_invoice_form_draft_v1';
 
-// مكون تقويم مخصص بالكامل لحل مشكلة المتصفح المعكوس والأيقونة المظلمة
+// مكون التقويم التفاعلي الموحد بالأيقونة البيضاء الناصعة
 const CustomDatePicker = ({
   value,
   onChange,
@@ -91,7 +95,6 @@ const CustomDatePicker = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // السهم للأعلى ينقلك للشهر القادم
   const handleNextMonth = () => {
     if (viewMonth === 11) {
       setViewMonth(0);
@@ -101,7 +104,6 @@ const CustomDatePicker = ({
     }
   };
 
-  // السهم للأسفل يرجعك للشهر السابق
   const handlePrevMonth = () => {
     if (viewMonth === 0) {
       setViewMonth(11);
@@ -134,12 +136,11 @@ const CustomDatePicker = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="mt-2 flex w-full items-center justify-between rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white transition hover:border-slate-700"
+        className="mt-2 flex w-full items-center justify-between rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white transition hover:border-slate-700 outline-none"
       >
         <span className={value ? 'text-white' : 'text-slate-500'}>
           {value || placeholder}
         </span>
-        {/* أيقونة تقويم بيضاء نقية وواضحة */}
         <svg
           className="h-5 w-5 text-white"
           fill="none"
@@ -166,7 +167,7 @@ const CustomDatePicker = ({
                 type="button"
                 onClick={handlePrevMonth}
                 title="الشهر السابق"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -175,8 +176,8 @@ const CustomDatePicker = ({
               <button
                 type="button"
                 onClick={handleNextMonth}
-                title="الشهر القادم (للأعلى)"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                title="الشهر القادم"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -222,7 +223,7 @@ const CustomDatePicker = ({
                 onChange('');
                 setIsOpen(false);
               }}
-              className="text-slate-400 hover:text-rose-400"
+              className="text-slate-400 hover:text-rose-400 transition"
             >
               Clear
             </button>
@@ -230,7 +231,8 @@ const CustomDatePicker = ({
               type="button"
               onClick={() => {
                 const now = new Date();
-                onChange(formatDateInput(now));
+                const pad = (n: number) => String(n).padStart(2, '0');
+                onChange(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
                 setViewYear(now.getFullYear());
                 setViewMonth(now.getMonth());
                 setIsOpen(false);
@@ -247,7 +249,16 @@ const CustomDatePicker = ({
 };
 
 const OrdersPage = () => {
-  const { orders: invoices, inventory: customers, customerInsights, addOrder, updateOrder, deleteOrder } = useAppData();
+  const { 
+    orders: invoices, 
+    inventory: customers, 
+    customerInsights, 
+    addOrder, 
+    updateOrder, 
+    deleteOrder,
+    formatCurrency // استخدام دالة التنسيق الحية الموحدة
+  } = useAppData();
+
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -364,26 +375,21 @@ const OrdersPage = () => {
 
   const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const parsedAmount = parseAmount(form.amount);
+    const rawVal = parseAmount(form.amount);
 
     if (
       !form.invoiceNumber.trim() ||
       !form.issueDate ||
       !form.dueDate ||
-      !String(form.amount).trim() ||
+      rawVal <= 0 ||
       (!form.customerId && !form.customerName.trim())
     ) {
-      setMessage('Please complete all invoice fields.');
+      setMessage('Please enter a valid invoice amount and fill required fields.');
       return;
     }
 
     if (customers.length > 0 && !form.customerId) {
       setMessage('Please select a customer for the invoice.');
-      return;
-    }
-
-    if (parsedAmount <= 0) {
-      setMessage('Enter a valid invoice amount.');
       return;
     }
 
@@ -402,7 +408,6 @@ const OrdersPage = () => {
       return;
     }
 
-    const amount = String(form.amount).startsWith('$') ? form.amount : formatCurrency(parsedAmount);
     const customerId = form.customerId || editing?.customerId || `CUST-${Math.random().toString(36).slice(2, 6)}`;
     const paymentDateVal = form.status === 'Paid' ? form.paymentDate || formatDateInput(new Date()) : undefined;
 
@@ -410,7 +415,7 @@ const OrdersPage = () => {
       invoiceNumber: form.invoiceNumber.trim(),
       customerId,
       customerName: form.customerName.trim(),
-      amount,
+      amount: String(rawVal), // نمرر الرقم نظيفاً ليتكفل الـ Context بتنسيقه
       issueDate: form.issueDate,
       dueDate: form.dueDate,
       status: form.status,
@@ -441,7 +446,7 @@ const OrdersPage = () => {
       invoiceNumber: invoice.invoiceNumber,
       customerId: invoice.customerId,
       customerName: invoice.customerName,
-      amount: String(invoice.amount),
+      amount: String(parseAmount(invoice.amount)),
       issueDate: invoice.issueDate,
       dueDate: invoice.dueDate,
       status: invoice.status,
@@ -634,34 +639,6 @@ const OrdersPage = () => {
     setTimeout(() => setMessage(''), 4500);
   };
 
-  const handleExportReconciliationReport = () => {
-    const paidInvoices = invoices.filter((i) => i.status === 'Paid' || i.notes?.includes('Auto-Reconciled') || i.notes?.includes('Payment Logged'));
-    if (paidInvoices.length === 0) {
-      alert('No reconciled or settled invoices to export.');
-      return;
-    }
-
-    const headers = ['Invoice #', 'Customer', 'Amount', 'Settlement Date', 'Status', 'Audit Reference / Notes'];
-    const rows = paidInvoices.map((inv) => [
-      `"${inv.invoiceNumber}"`,
-      `"${inv.customerName}"`,
-      `"${parseAmount(inv.amount)}"`,
-      `"${inv.paymentDate || inv.dueDate}"`,
-      `"${inv.status}"`,
-      `"${(inv.notes || '').replace(/"/g, '""').replace(/\n/g, ' | ')}"`
-    ]);
-
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Reconciliation_Audit_Report_${formatDateInput(new Date())}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
@@ -671,13 +648,6 @@ const OrdersPage = () => {
             <h1 className="mt-3 text-3xl font-semibold text-white">Manage overdue and upcoming invoices</h1>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handleExportReconciliationReport}
-              className="rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              📊 Export Audit CSV
-            </button>
             <input
               type="file"
               accept=".csv"
@@ -771,6 +741,7 @@ const OrdersPage = () => {
           </div>
         </div>
 
+        {/* الجدول الرئيسي مع إظهار المبلغ المنسق من Context مباشرة */}
         <div className="mt-8 overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-950/80">
           <table className="min-w-full divide-y divide-slate-800 text-sm">
             <thead className="bg-slate-900 text-slate-400">
@@ -799,7 +770,7 @@ const OrdersPage = () => {
                     </span>
                   </td>
                   <td className="px-6 py-5 text-right font-medium text-slate-200">
-                    {formatCurrency(parseAmount(invoice.amount))}
+                    {invoice.amount}
                   </td>
                   <td className="px-6 py-5 text-right text-slate-200">
                     <div className="flex items-center justify-end gap-2">
@@ -862,7 +833,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* نموذج إنشاء أو تعديل الفاتورة مع التقويم المخصص بالأيقونة البيضاء النقية */}
+        {/* نموذج إضافة وتعديل الفواتير */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
           <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow. (Drafts auto-saved)</p>
@@ -909,9 +880,11 @@ const OrdersPage = () => {
             <label className="block text-sm text-slate-300">
               Amount
               <input
+                type="number"
+                step="0.01"
                 value={form.amount}
                 onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, amount: event.target.value }))}
-                placeholder="$0.00"
+                placeholder="0.00"
                 className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
               />
             </label>
@@ -984,7 +957,7 @@ const OrdersPage = () => {
         </div>
       </section>
 
-      {/* نافذة تفاصيل الفاتورة المحددة */}
+      {/* نافذة تفاصيل الفاتورة */}
       {selectedInvoice && (
         <div className="rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <div className="flex items-center justify-between gap-4">
@@ -1001,7 +974,7 @@ const OrdersPage = () => {
             <div className="rounded-3xl bg-slate-900/80 p-5">
               <p className="text-sm text-slate-400">Amount</p>
               <p className="mt-3 text-3xl font-semibold text-white">
-                {formatCurrency(parseAmount(selectedInvoice.amount))}
+                {selectedInvoice.amount}
               </p>
             </div>
             <div className="rounded-3xl bg-slate-900/80 p-5">
@@ -1047,7 +1020,7 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* نافذة تسجيل السداد اليدوي */}
+      {/* نافذة تسجيل السداد */}
       {paymentModalInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-lg rounded-[2rem] border border-slate-800 bg-slate-900 p-7 shadow-2xl">
@@ -1067,11 +1040,11 @@ const OrdersPage = () => {
             <form onSubmit={handleRecordPaymentSubmit} className="mt-6 space-y-4">
               <div className="rounded-2xl bg-slate-950/60 p-4 border border-slate-800/80 flex justify-between items-center">
                 <span className="text-xs text-slate-400">Total Invoice Amount:</span>
-                <span className="text-base font-bold text-white">{formatCurrency(parseAmount(paymentModalInvoice.amount))}</span>
+                <span className="text-base font-bold text-white">{paymentModalInvoice.amount}</span>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Amount ($)</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Payment Amount</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1080,11 +1053,6 @@ const OrdersPage = () => {
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-brand-500"
                 />
-                <span className="text-[11px] text-slate-400 mt-1 block">
-                  {parseAmount(paymentAmount) < parseAmount(paymentModalInvoice.amount)
-                    ? `Remaining balance will be ${formatCurrency(parseAmount(paymentModalInvoice.amount) - parseAmount(paymentAmount))} (Partially Paid).`
-                    : 'This payment will mark the invoice as Fully Paid.'}
-                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1142,128 +1110,7 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* نافذة المطابقة البنكية */}
-      {isBankModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-[2.5rem] border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
-              <div>
-                <span className="text-xs uppercase tracking-[0.25em] text-brand-400 font-semibold">Automated Reconciliation Engine</span>
-                <h3 className="text-2xl font-bold text-white mt-1">Bank Statement Reconciliation</h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Found {parsedBankFeed.length} transaction(s). {Object.values(selectedMatches).filter(Boolean).length} matched automatically.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsBankModalOpen(false)}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {parsedBankFeed.length === 0 ? (
-                <p className="text-center py-10 text-slate-400 text-sm">No valid transaction lines detected in this statement.</p>
-              ) : (
-                <div className="overflow-hidden rounded-2xl border border-slate-800">
-                  <table className="min-w-full divide-y divide-slate-800 text-xs">
-                    <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider">
-                      <tr>
-                        <th className="px-4 py-3 text-center">Match</th>
-                        <th className="px-4 py-3 text-left">Tx Date</th>
-                        <th className="px-4 py-3 text-left">Bank Memo / Reference</th>
-                        <th className="px-4 py-3 text-right">Inflow ($)</th>
-                        <th className="px-4 py-3 text-left">Matched Invoice</th>
-                        <th className="px-4 py-3 text-center">Confidence & Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800 bg-slate-900/60">
-                      {parsedBankFeed.map((tx) => (
-                        <tr key={tx.id} className="hover:bg-slate-800/40 transition">
-                          <td className="px-4 py-3.5 text-center">
-                            <input
-                              type="checkbox"
-                              disabled={!tx.matchedInvoice}
-                              checked={!!selectedMatches[tx.id]}
-                              onChange={(e) => setSelectedMatches((prev) => ({ ...prev, [tx.id]: e.target.checked }))}
-                              className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-0 cursor-pointer disabled:opacity-30"
-                            />
-                          </td>
-                          <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{tx.date}</td>
-                          <td className="px-4 py-3.5 text-white font-medium max-w-xs truncate" title={tx.description}>
-                            {tx.description}
-                          </td>
-                          <td className="px-4 py-3.5 text-right font-bold text-emerald-400 whitespace-nowrap">
-                            {formatCurrency(tx.amount)}
-                          </td>
-                          <td className="px-4 py-3.5 text-slate-300">
-                            {tx.matchedInvoice ? (
-                              <div>
-                                <span className="font-semibold text-white">{tx.matchedInvoice.invoiceNumber}</span>
-                                <span className="text-slate-400 block text-[11px] truncate">
-                                  {tx.matchedInvoice.customerName} ({formatCurrency(parseAmount(tx.matchedInvoice.amount))})
-                                </span>
-                                {(tx.feeAmount ?? 0) > 0 && (
-                                  <span className="text-amber-400 block text-[10px] font-medium">
-                                    Fee: {formatCurrency(tx.feeAmount ?? 0)}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-500 italic">No matching invoice found</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3.5 text-center">
-                            {tx.matchedInvoice ? (
-                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                                (tx.matchConfidence ?? 0) >= 90
-                                  ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
-                                  : (tx.matchConfidence ?? 0) >= 80
-                                  ? 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
-                                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                              }`}>
-                                {tx.matchConfidence}% ({tx.matchType})
-                              </span>
-                            ) : (
-                              <span className="text-slate-600">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <div className="p-6 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between">
-              <span className="text-xs text-slate-400">
-                {Object.values(selectedMatches).filter(Boolean).length} transaction(s) selected for reconciliation.
-              </span>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsBankModalOpen(false)}
-                  className="rounded-2xl border border-slate-700 px-5 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={Object.values(selectedMatches).filter(Boolean).length === 0}
-                  onClick={handleConfirmReconciliation}
-                  className="rounded-2xl bg-emerald-600 px-6 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Reconcile Selected ({Object.values(selectedMatches).filter(Boolean).length})
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* نافذة إيصال السداد */}
+      {/* نافذة الإيصال */}
       {receiptInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-lg rounded-[2.5rem] border border-slate-800 bg-slate-900 p-8 shadow-2xl">
@@ -1299,12 +1146,12 @@ const OrdersPage = () => {
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-800">
                   <span className="text-sm font-semibold text-slate-300">Amount Paid:</span>
-                  <span className="text-lg font-bold text-emerald-400">{formatCurrency(parseAmount(receiptInvoice.amount))}</span>
+                  <span className="text-lg font-bold text-emerald-400">{receiptInvoice.amount}</span>
                 </div>
               </div>
 
               <div className="rounded-2xl bg-slate-950/40 p-4 border border-slate-800">
-                <span className="text-slate-400 block mb-1 font-medium">Audit Trail & Verification:</span>
+                <span className="text-slate-400 block mb-1 font-medium">Audit Trail:</span>
                 <p className="text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed">
                   {receiptInvoice.notes || 'Payment reconciled with full settlement.'}
                 </p>
@@ -1312,18 +1159,6 @@ const OrdersPage = () => {
             </div>
 
             <div className="mt-6 flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    `Payment Receipt for ${receiptInvoice.customerName}\nInvoice: ${receiptInvoice.invoiceNumber}\nAmount: ${formatCurrency(parseAmount(receiptInvoice.amount))}\nDate: ${receiptInvoice.paymentDate || receiptInvoice.dueDate}\nStatus: Settled & Reconciled.`
-                  );
-                  alert('Receipt summary copied to clipboard!');
-                }}
-                className="rounded-2xl border border-slate-700 px-5 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
-              >
-                📋 Copy Receipt Summary
-              </button>
               <button
                 type="button"
                 onClick={() => setReceiptInvoice(null)}
