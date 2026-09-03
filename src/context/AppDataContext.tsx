@@ -14,6 +14,16 @@ export const currencySymbols: Record<string, string> = {
   'EGP (ج.م)': 'ج.م ',
 };
 
+// أسعار الصرف الحالية مقارنة بالدولار الأمريكي (العملة الأساسية المخزنة)
+const exchangeRates: Record<string, number> = {
+  'USD ($)': 1,
+  'EUR (€)': 0.92,
+  'GBP (£)': 0.79,
+  'SAR (﷼)': 3.75,
+  'AED (د.إ)': 3.67,
+  'EGP (ج.م)': 48.50,
+};
+
 export const parseCurrency = (value: string | number | unknown) => {
   if (typeof value === 'number') return Number.isNaN(value) ? 0 : value;
   if (typeof value === 'string') return Number(value.replace(/[^0-9.-]+/g, '')) || 0;
@@ -46,7 +56,7 @@ export type AppDataContextValue = {
   shipping: NotificationItem[];
   assistantMessages: AssistantMessage[];
   settings: Settings;
-  formatCurrency: (amount: number) => string;
+  formatCurrency: (amountInUSD: number, historicalRate?: number) => string;
   currencySymbol: string;
   metrics: {
     revenue: number;
@@ -114,23 +124,23 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // رمز العملة المستخرج من الإعدادات
-  const currencySymbol = useMemo(() => {
-    const cur = (settings as any)?.currency || 'USD ($)';
-    return currencySymbols[cur] || '$';
-  }, [settings]);
+  const activeCurrencyKey = (settings as any)?.currency || 'USD ($)';
+  const currencySymbol = currencySymbols[activeCurrencyKey] || '$';
+  const currentExchangeRate = exchangeRates[activeCurrencyKey] || 1;
 
+  // دالة تنسيق المبلغ مع دعم سعر الصرف التاريخي أو الحالي
   const formatCurrency = useMemo(() => {
-    return (amount: number) => {
-      const formatted = (amount || 0).toLocaleString(undefined, {
+    return (amountInUSD: number, historicalRate?: number) => {
+      const rate = historicalRate !== undefined && historicalRate !== null ? historicalRate : currentExchangeRate;
+      const converted = (amountInUSD || 0) * rate;
+      const formatted = converted.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
       return `${currencySymbol}${formatted}`;
     };
-  }, [currencySymbol]);
+  }, [currencySymbol, currentExchangeRate]);
 
-  // الاستماع لأي تغيير في العملة من صفحات أخرى
   useEffect(() => {
     const syncSettings = () => {
       try {
@@ -208,7 +218,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  // توليد قائمة العملاء مع العملة الحية
   const inventory: Customer[] = useMemo(() => {
     return rawCustomers.map((db) => ({
       id: db.id,
@@ -232,16 +241,19 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return map;
   }, [inventory]);
 
-  // توليد الفواتير مع العملة الحية
+  // توليد الفواتير مع حساب سعر الصرف التاريخي المحفوظ في قاعدة البيانات
   const orders: Invoice[] = useMemo(() => {
     return rawInvoices.map((db) => {
       const custId = db.customer_id || db.customerId || '';
+      const historicalRate = db.exchange_rate !== undefined && db.exchange_rate !== null ? Number(db.exchange_rate) : currentExchangeRate;
+      const baseAmountUSD = Number(db.amount) || 0;
+
       return {
         id: db.id,
         invoiceNumber: db.invoice_number || db.invoiceNumber || '',
         customerId: custId,
         customerName: db.customer_name || customerMap.get(custId) || 'Unknown Customer',
-        amount: formatCurrency(Number(db.amount) || 0),
+        amount: formatCurrency(baseAmountUSD, historicalRate),
         issueDate: db.issue_date || db.issueDate || '',
         dueDate: db.due_date || db.dueDate || '',
         status: db.status || 'Sent',
@@ -253,7 +265,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         followUpOn: db.follow_up_on || db.followUpOn || undefined,
       };
     });
-  }, [rawInvoices, customerMap, formatCurrency]);
+  }, [rawInvoices, customerMap, formatCurrency, currentExchangeRate]);
 
   const signup = async (name: string, email: string, password: string) => {
     if (!name.trim() || !email.trim() || !password) {
@@ -349,9 +361,9 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       const riskScore =
         outstandingBalance <= 0
           ? 'Low'
-          : customer.reliability === 'Needs improvement' || overdueBalance > 3000 || repeatLatePayer
+          : customer.reliability === 'Needs improvement' || overdueBalance > (3000 * currentExchangeRate) || repeatLatePayer
             ? 'High'
-            : customer.reliability === 'Fair' || overdueBalance > 1000
+            : customer.reliability === 'Fair' || overdueBalance > (1000 * currentExchangeRate)
               ? 'Medium'
               : 'Low';
 
@@ -362,9 +374,9 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         email: customer.email,
         phone: customer.phone,
         totalInvoices,
-        outstandingBalance: formatCurrency(outstandingBalance),
-        overdueBalance: formatCurrency(overdueBalance),
-        paidAmount: formatCurrency(paidAmount),
+        outstandingBalance: formatCurrency(outstandingBalance / currentExchangeRate),
+        overdueBalance: formatCurrency(overdueBalance / currentExchangeRate),
+        paidAmount: formatCurrency(paidAmount / currentExchangeRate),
         averagePaymentDelay,
         repeatLatePayer,
         riskScore: riskScore as 'High' | 'Medium' | 'Low',
@@ -372,7 +384,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         paymentHistory: customer.paymentHistory,
       };
     });
-  }, [orders, inventory, formatCurrency]);
+  }, [orders, inventory, formatCurrency, currentExchangeRate]);
 
   const forecastData = useMemo(() => {
     const today = getToday();
@@ -418,10 +430,10 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       : 0;
     const collectionRate = outstandingReceivables === 0 ? 100 : Math.max(0, Math.min(100, Math.round(((outstandingReceivables - overdueReceivables) / outstandingReceivables) * 100)));
     const aging = [
-      { label: 'Not due', total: formatCurrency(unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) < 0).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0)), count: unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) < 0).length },
-      { label: '1-30 days overdue', total: formatCurrency(unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 1 && diff <= 30; }).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0)), count: unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 1 && diff <= 30; }).length },
-      { label: '31-60 days overdue', total: formatCurrency(unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 31 && diff <= 60; }).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0)), count: unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 31 && diff <= 60; }).length },
-      { label: '61+ days overdue', total: formatCurrency(unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) >= 61).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0)), count: unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) >= 61).length },
+      { label: 'Not due', total: formatCurrency(unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) < 0).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0) / currentExchangeRate), count: unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) < 0).length },
+      { label: '1-30 days overdue', total: formatCurrency(unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 1 && diff <= 30; }).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0) / currentExchangeRate), count: unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 1 && diff <= 30; }).length },
+      { label: '31-60 days overdue', total: formatCurrency(unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 31 && diff <= 60; }).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0) / currentExchangeRate), count: unpaidInvoices.filter((invoice) => { const diff = diffDays(invoice.dueDate, today); return diff >= 31 && diff <= 60; }).length },
+      { label: '61+ days overdue', total: formatCurrency(unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) >= 61).reduce((total, invoice) => total + parseCurrency(invoice.amount), 0) / currentExchangeRate), count: unpaidInvoices.filter((invoice) => diffDays(invoice.dueDate, today) >= 61).length },
     ];
     const overdueByCustomer = orders.reduce<Record<string, { customerName: string; overdueAmount: number; overdueCount: number }>>((acc, invoice) => {
       if (invoice.status !== 'Overdue') return acc;
@@ -434,7 +446,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     const topOverdueCustomers = Object.values(overdueByCustomer)
       .sort((a, b) => b.overdueAmount - a.overdueAmount)
       .slice(0, 5)
-      .map((item) => ({ customerName: item.customerName, overdueAmount: formatCurrency(item.overdueAmount), overdueCount: item.overdueCount }));
+      .map((item) => ({ customerName: item.customerName, overdueAmount: formatCurrency(item.overdueAmount / currentExchangeRate), overdueCount: item.overdueCount }));
 
     return {
       collectionRate,
@@ -447,7 +459,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       aging,
       topOverdueCustomers,
     };
-  }, [forecastData, orders, formatCurrency]);
+  }, [forecastData, orders, formatCurrency, currentExchangeRate]);
 
   const getAlerts = () => {
     const today = getToday();
@@ -461,7 +473,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         id: `alert-invoice-${invoice.id}`,
         category: 'invoice',
         title: `Overdue invoice ${invoice.invoiceNumber}`,
-        message: `${invoice.customerName} has an overdue balance of ${formatCurrency(parseCurrency(invoice.amount))}.`,
+        message: `${invoice.customerName} has an overdue balance of ${invoice.amount}.`,
         targetPath: `/invoices`,
         badge: 'Overdue',
         actionRequired: true,
@@ -508,17 +520,18 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
     if (normalized.includes('summarize overdue') || normalized.includes('overdue exposure') || normalized.includes('overdue')) {
       const totalOverdue = overdueInvoices.reduce((sum, inv) => sum + parseCurrency(inv.amount), 0);
-      return totalOverdue > 0 ? `Rule-based insight: total overdue exposure is ${formatCurrency(totalOverdue)} across ${overdueInvoices.length} invoice(s).` : 'Rule-based insight: there is no overdue exposure right now.';
+      return totalOverdue > 0 ? `Rule-based insight: total overdue exposure is ${formatCurrency(totalOverdue / currentExchangeRate)} across ${overdueInvoices.length} invoice(s).` : 'Rule-based insight: there is no overdue exposure right now.';
     }
     if (normalized.includes('highest risk')) {
       return topRisk.length ? `Rule-based insight: highest risk customers are ${topRisk.map((customer) => `${customer.name} (${customer.riskScore})`).join(', ')}.` : 'Rule-based insight: no customers currently flagged as high risk.';
     }
     if (normalized.includes('forecast') || normalized.includes('cash flow') || normalized.includes('explain')) {
-      return `Rule-based insight: 30-day cash flow forecast projects ${formatCurrency(forecastData.expected30)} in incoming collections.`;
+      return `Rule-based insight: 30-day cash flow forecast projects ${formatCurrency(forecastData.expected30 / currentExchangeRate)} in incoming collections.`;
     }
     return 'Rule-based insight: ask about highest risk customers, invoices due today, or cash expected in the next 30 days.';
   };
 
+  // حفظ الفاتورة مع تثبيت سعر الصرف التاريخي وقت الإنشاء
   const addOrder = async (order: Omit<Invoice, 'id'>) => {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (!authUser) {
@@ -527,33 +540,20 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     let finalCustomerId: string | null = order.customerId;
-    const existingCustomer = inventory.find((c) => c.id === order.customerId || c.name.toLowerCase() === order.customerName.toLowerCase());
+    const existingCustomer = inventory.find((c) => c.id === order.customerId);
 
-    if (existingCustomer) {
-      finalCustomerId = existingCustomer.id;
-    } else {
-      const { data: newCust, error: custError } = await supabase
-        .from('customers')
-        .insert([{
-          user_id: authUser.id,
-          name: order.customerName || 'Client Account',
-          company: order.customerName || 'Direct Billing',
-          reliability: 'Good',
-        }])
-        .select()
-        .single();
-
-      if (!custError && newCust) {
-        finalCustomerId = newCust.id;
-      } else {
-        finalCustomerId = null;
-      }
+    if (!existingCustomer && order.customerId) {
+      finalCustomerId = order.customerId;
     }
+
+    const inputAmount = parseCurrency(order.amount);
+    const baseAmountUSD = inputAmount / currentExchangeRate;
 
     const payload: any = {
       user_id: authUser.id,
       invoice_number: order.invoiceNumber,
-      amount: parseCurrency(order.amount),
+      amount: baseAmountUSD,
+      exchange_rate: currentExchangeRate, // تثبيت سعر الصرف التاريخي
       issue_date: order.issueDate,
       due_date: order.dueDate,
       status: order.status,
@@ -567,14 +567,18 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     if (error) {
       showToast(error.message || 'Error adding invoice', 'error');
     } else {
-      showToast('Invoice created successfully', 'success');
+      showToast('Invoice created successfully with historical exchange rate', 'success');
       await fetchData();
     }
   };
 
   const updateOrder = async (order: Invoice) => {
     const paymentDate = order.status === 'Paid' ? (order.paymentDate || getToday()) : null;
+    const inputAmount = parseCurrency(order.amount);
+    const baseAmountUSD = inputAmount / currentExchangeRate;
+
     const payload: any = {
+      amount: baseAmountUSD,
       status: order.status,
       payment_date: paymentDate,
     };
@@ -622,8 +626,8 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       company: item.company,
       email: item.email,
       phone: item.phone,
-      outstanding: item.outstanding ? Number(item.outstanding) : 0,
-      overdue: item.overdue ? Number(item.overdue) : 0,
+      outstanding: item.outstanding ? Number(item.outstanding) / currentExchangeRate : 0,
+      overdue: item.overdue ? Number(item.overdue) / currentExchangeRate : 0,
       average_days_to_pay: item.averageDaysToPay ? Number(item.averageDaysToPay) : 0,
       reliability: item.reliability,
     };
@@ -642,8 +646,8 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       company: item.company,
       email: item.email,
       phone: item.phone,
-      outstanding: item.outstanding ? Number(item.outstanding) : 0,
-      overdue: item.overdue ? Number(item.overdue) : 0,
+      outstanding: item.outstanding ? Number(item.outstanding) / currentExchangeRate : 0,
+      overdue: item.overdue ? Number(item.overdue) / currentExchangeRate : 0,
       average_days_to_pay: item.averageDaysToPay ? Number(item.averageDaysToPay) : 0,
       reliability: item.reliability,
     };
