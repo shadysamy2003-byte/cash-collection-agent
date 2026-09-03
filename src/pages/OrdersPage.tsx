@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import type { Invoice, InvoiceStatus } from '../types';
 
@@ -6,6 +6,16 @@ const invoiceStatuses: InvoiceStatus[] = ['Draft', 'Sent', 'Due Soon', 'Overdue'
 const searchStatuses = ['All', 'Draft', 'Sent', 'Due Soon', 'Overdue', 'Partially Paid', 'Paid'] as const;
 const riskOptions = ['All', 'High', 'Medium', 'Low'] as const;
 const sortOptions = ['dueDate', 'amount', 'status', 'customerName'] as const;
+
+interface BankTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  matchedInvoice?: Invoice;
+  matchType?: 'Exact Invoice #' | 'Customer & Amount' | 'Amount Match';
+  matchConfidence?: number;
+}
 
 const parseAmount = (value: unknown): number => {
   if (typeof value === 'number') return Number.isNaN(value) ? 0 : value;
@@ -41,12 +51,18 @@ const OrdersPage = () => {
   const [sortKey, setSortKey] = useState<typeof sortOptions[number]>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
-  // حالة نافذة تسجيل السداد (Payment Modal)
+  // حالة تسجيل السداد الفردي
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
   const [paymentReference, setPaymentReference] = useState('');
   const [paymentDate, setPaymentDate] = useState(formatDateInput(new Date()));
+
+  // حالة استيراد كشف الحساب البنكي والمطابقة الآلية
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [parsedBankFeed, setParsedBankFeed] = useState<BankTransaction[]>([]);
+  const [selectedMatches, setSelectedMatches] = useState<Record<string, boolean>>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = useState({
     invoiceNumber: '',
@@ -258,15 +274,165 @@ const OrdersPage = () => {
     setTimeout(() => setMessage(''), 4000);
   };
 
+  // معالج رفع وقراءة كشف الحساب البنكي ومطابقته آلياً
+  const handleBankCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+
+      const lines = text.split(/\r\n|\n/).filter((line) => line.trim().length > 0);
+      if (lines.length < 2) {
+        alert('CSV file is empty or has no header.');
+        return;
+      }
+
+      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
+      const dateIdx = headers.findIndex((h) => h.includes('date'));
+      const descIdx = headers.findIndex((h) => h.includes('desc') || h.includes('narr') || h.includes('ref') || h.includes('memo') || h.includes('payee'));
+      const amountIdx = headers.findIndex((h) => h.includes('credit') || h.includes('amount') || h.includes('inflow') || h.includes('deposit'));
+
+      const openInvoices = invoices.filter((inv) => inv.status !== 'Paid');
+      const matchedMap = new Set<string>();
+      const parsedTransactions: BankTransaction[] = [];
+      const autoSelection: Record<string, boolean> = {};
+
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(',').map((cell) => cell.trim().replace(/"/g, ''));
+        if (row.length < 2) continue;
+
+        const date = dateIdx !== -1 ? row[dateIdx] : formatDateInput(new Date());
+        const description = descIdx !== -1 ? row[descIdx] : row[1] || 'Bank Inflow';
+        const rawAmount = amountIdx !== -1 ? row[amountIdx] : row[row.length - 1];
+        const amount = Math.abs(parseAmount(rawAmount));
+
+        if (amount <= 0) continue;
+
+        const txId = `TX-${i}-${Date.now().toString(36)}`;
+        let bestInvoice: Invoice | undefined;
+        let matchType: BankTransaction['matchType'];
+        let matchConfidence = 0;
+
+        // خوارزمية المطابقة الذكية
+        for (const inv of openInvoices) {
+          if (matchedMap.has(inv.id)) continue;
+          const invAmount = parseAmount(inv.amount);
+          const cleanInvNum = inv.invoiceNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanDesc = description.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanCustName = inv.customerName.toLowerCase();
+
+          // 1. تطابق رقم الفاتورة والمبلغ (Exact Match)
+          if (cleanDesc.includes(cleanInvNum) && Math.abs(invAmount - amount) < 0.01) {
+            bestInvoice = inv;
+            matchType = 'Exact Invoice #';
+            matchConfidence = 100;
+            break;
+          }
+
+          // 2. تطابق رقم الفاتورة (حتى مع فارق جزئي في السداد)
+          if (cleanDesc.includes(cleanInvNum)) {
+            bestInvoice = inv;
+            matchType = 'Exact Invoice #';
+            matchConfidence = 90;
+            break;
+          }
+
+          // 3. تطابق اسم العميل والمبلغ
+          if (description.toLowerCase().includes(cleanCustName) && Math.abs(invAmount - amount) < 0.01) {
+            bestInvoice = inv;
+            matchType = 'Customer & Amount';
+            matchConfidence = 85;
+            break;
+          }
+
+          // 4. تطابق المبلغ فقط
+          if (Math.abs(invAmount - amount) < 0.01 && !bestInvoice) {
+            bestInvoice = inv;
+            matchType = 'Amount Match';
+            matchConfidence = 65;
+          }
+        }
+
+        if (bestInvoice) {
+          matchedMap.add(bestInvoice.id);
+          autoSelection[txId] = true;
+        }
+
+        parsedTransactions.push({
+          id: txId,
+          date: date || formatDateInput(new Date()),
+          description,
+          amount,
+          matchedInvoice: bestInvoice,
+          matchType,
+          matchConfidence
+        });
+      }
+
+      setParsedBankFeed(parsedTransactions);
+      setSelectedMatches(autoSelection);
+      setIsBankModalOpen(true);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    reader.readAsText(file);
+  };
+
+  // تنفيذ المطابقة الآلية وتحديث قيود الفواتير دفعة واحدة
+  const handleConfirmReconciliation = () => {
+    let reconciledCount = 0;
+
+    parsedBankFeed.forEach((tx) => {
+      if (selectedMatches[tx.id] && tx.matchedInvoice) {
+        const inv = tx.matchedInvoice;
+        const total = parseAmount(inv.amount);
+        const paid = tx.amount;
+        const isFull = paid >= total;
+        const newStatus: InvoiceStatus = isFull ? 'Paid' : 'Partially Paid';
+        const audit = `[Auto-Reconciled from Bank Feed: ${formatCurrency(paid)} Ref: "${tx.description}" on ${tx.date}]`;
+        const notes = inv.notes ? `${inv.notes}\n${audit}` : audit;
+
+        updateOrder({
+          ...inv,
+          status: newStatus,
+          paymentDate: isFull ? tx.date : inv.paymentDate,
+          notes
+        });
+        reconciledCount++;
+      }
+    });
+
+    setMessage(`Successfully reconciled ${reconciledCount} invoice(s) from bank statement.`);
+    setIsBankModalOpen(false);
+    setTimeout(() => setMessage(''), 4500);
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-slate-800/90 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/25 backdrop-blur-xl">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-brand-300">Invoices</p>
+            <p className="text-sm uppercase tracking-[0.3em] text-brand-300">Invoices & Collections</p>
             <h1 className="mt-3 text-3xl font-semibold text-white">Manage overdue and upcoming invoices</h1>
           </div>
           <div className="flex flex-wrap gap-3">
+            <input
+              type="file"
+              accept=".csv"
+              ref={fileInputRef}
+              onChange={handleBankCsvUpload}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-2xl border border-brand-500/40 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-brand-300 transition hover:bg-brand-500/20"
+            >
+              📥 Import Bank CSV
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -276,10 +442,16 @@ const OrdersPage = () => {
               }}
               className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-400"
             >
-              New invoice
+              + New invoice
             </button>
           </div>
         </div>
+
+        {message && (
+          <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-300">
+            {message}
+          </div>
+        )}
 
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <div className="grid gap-4 lg:grid-cols-4">
@@ -419,7 +591,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        {/* Invoice Form (Create/Edit) */}
+        {/* نموذج إنشاء أو تعديل الفاتورة */}
         <div className="mt-8 rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <h2 className="text-lg font-semibold text-white">{editing ? 'Edit invoice' : 'Invoice details'}</h2>
           <p className="mt-2 text-sm text-slate-400">Add and manage invoices for your collection workflow.</p>
@@ -544,11 +716,10 @@ const OrdersPage = () => {
               )}
             </div>
           </form>
-          {message && <p className="mt-4 rounded-3xl bg-slate-950/70 px-4 py-3 text-sm text-slate-200">{message}</p>}
         </div>
       </section>
 
-      {/* Selected Invoice Details View */}
+      {/* نافذة تفاصيل الفاتورة المحددة */}
       {selectedInvoice && (
         <div className="rounded-[2rem] border border-slate-800 bg-slate-950/80 p-6">
           <div className="flex items-center justify-between gap-4">
@@ -602,7 +773,7 @@ const OrdersPage = () => {
         </div>
       )}
 
-      {/* Record Payment Modal */}
+      {/* نافذة تسجيل السداد اليدوي الفردي */}
       {paymentModalInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
           <div className="w-full max-w-lg rounded-[2rem] border border-slate-800 bg-slate-900 p-7 shadow-2xl">
@@ -665,7 +836,8 @@ const OrdersPage = () => {
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
                     className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-brand-500"
-                  />
+                  >
+                  </input>
                 </div>
               </div>
 
@@ -696,6 +868,123 @@ const OrdersPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* نافذة المطابقة البنكية الذكية لكشوف الحسابات (Bank Feed Auto-Reconciliation Modal) */}
+      {isBankModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-[2.5rem] border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden">
+            {/* رأس النافذة */}
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+              <div>
+                <span className="text-xs uppercase tracking-[0.25em] text-brand-400 font-semibold">Automated Reconciliation Engine</span>
+                <h3 className="text-2xl font-bold text-white mt-1">Bank Statement Reconciliation</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Found {parsedBankFeed.length} transaction(s). {Object.values(selectedMatches).filter(Boolean).length} matched automatically.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsBankModalOpen(false)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* جدول حركات البنك واقتراحات المطابقة */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {parsedBankFeed.length === 0 ? (
+                <p className="text-center py-10 text-slate-400 text-sm">No valid transaction lines detected in this statement.</p>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-slate-800">
+                  <table className="min-w-full divide-y divide-slate-800 text-xs">
+                    <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3 text-center">Match</th>
+                        <th className="px-4 py-3 text-left">Tx Date</th>
+                        <th className="px-4 py-3 text-left">Bank Memo / Reference</th>
+                        <th className="px-4 py-3 text-right">Inflow ($)</th>
+                        <th className="px-4 py-3 text-left">Matched Invoice</th>
+                        <th className="px-4 py-3 text-center">Confidence</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 bg-slate-900/60">
+                      {parsedBankFeed.map((tx) => (
+                        <tr key={tx.id} className="hover:bg-slate-800/40 transition">
+                          <td className="px-4 py-3.5 text-center">
+                            <input
+                              type="checkbox"
+                              disabled={!tx.matchedInvoice}
+                              checked={!!selectedMatches[tx.id]}
+                              onChange={(e) => setSelectedMatches((prev) => ({ ...prev, [tx.id]: e.target.checked }))}
+                              className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-brand-500 focus:ring-0 cursor-pointer disabled:opacity-30"
+                            />
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{tx.date}</td>
+                          <td className="px-4 py-3.5 text-white font-medium max-w-xs truncate" title={tx.description}>
+                            {tx.description}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-bold text-emerald-400 whitespace-nowrap">
+                            {formatCurrency(tx.amount)}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-300">
+                            {tx.matchedInvoice ? (
+                              <div>
+                                <span className="font-semibold text-white">{tx.matchedInvoice.invoiceNumber}</span>
+                                <span className="text-slate-400 block text-[11px] truncate">{tx.matchedInvoice.customerName} ({formatCurrency(parseAmount(tx.matchedInvoice.amount))})</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 italic">No matching invoice found</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            {tx.matchedInvoice ? (
+                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                                (tx.matchConfidence ?? 0) >= 90
+                                  ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                                  : (tx.matchConfidence ?? 0) >= 80
+                                  ? 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
+                                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                              }`}>
+                                {tx.matchConfidence}% ({tx.matchType})
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* أسفل النافذة وأزرار التنفيذ */}
+            <div className="p-6 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between">
+              <span className="text-xs text-slate-400">
+                {Object.values(selectedMatches).filter(Boolean).length} transaction(s) selected for reconciliation.
+              </span>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsBankModalOpen(false)}
+                  className="rounded-2xl border border-slate-700 px-5 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={Object.values(selectedMatches).filter(Boolean).length === 0}
+                  onClick={handleConfirmReconciliation}
+                  className="rounded-2xl bg-emerald-600 px-6 py-2.5 text-xs font-bold text-white hover:bg-emerald-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Reconcile Selected ({Object.values(selectedMatches).filter(Boolean).length})
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
