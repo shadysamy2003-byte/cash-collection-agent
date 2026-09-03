@@ -464,9 +464,16 @@ const OrdersPage = () => {
             <label className="block text-sm text-slate-300">
               Notes
               <textarea
+                rows={2}
                 value={form.notes}
+                onInput={(event) => {
+                  const target = event.currentTarget;
+                  target.style.height = 'auto';
+                  target.style.height = `${target.scrollHeight}px`;
+                }}
                 onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none"
+                placeholder="Add invoice notes or follow-up details..."
+                className="mt-2 w-full min-h-[70px] resize-none overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none transition focus:border-brand-500"
               />
             </label>
             <div className="flex flex-wrap gap-3">
@@ -540,7 +547,7 @@ const OrdersPage = () => {
           </div>
           <div className="mt-6 rounded-3xl bg-slate-900/80 p-5">
             <p className="text-sm text-slate-400">Notes</p>
-            <p className="mt-3 text-sm text-slate-300">{selectedInvoice.notes || 'No notes added.'}</p>
+            <p className="mt-3 text-sm text-slate-300 whitespace-pre-wrap">{selectedInvoice.notes || 'No notes added.'}</p>
           </div>
         </div>
       )}
