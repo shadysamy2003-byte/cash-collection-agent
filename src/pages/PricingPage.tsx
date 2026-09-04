@@ -1,16 +1,21 @@
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAppData } from '../context/AppDataContext';
 
-declare global {
-  interface Window {
-    Paddle?: any;
-  }
+interface Plan {
+  id: string;
+  title: string;
+  priceMonthly: number;
+  priceAnnualMonthlyEquivalent: number;
+  annualTotal: number;
+  currency: string;
+  description: string;
+  features: string[];
+  popular: boolean;
 }
 
-const PADDLE_CLIENT_TOKEN = 'live_f8d11a44516ea2c3d10428f1ecb';
-
-const plans = [
+const plans: Plan[] = [
   {
+    id: 'starter',
     title: 'Starter',
     priceMonthly: 9,
     priceAnnualMonthlyEquivalent: 7.2,
@@ -19,10 +24,9 @@ const plans = [
     description: 'For small teams that need reliable invoice collection',
     features: ['Invoice tracking', 'Due date reminders', 'Customer risk scores'],
     popular: false,
-    priceIdMonthly: 'pri_01m1kr7j9e247m5m7gx6gkja82',
-    priceIdAnnual: 'pri_01m1kr92g0dzfz7yrpy2j9pxrx',
   },
   {
+    id: 'growth',
     title: 'Growth',
     priceMonthly: 29,
     priceAnnualMonthlyEquivalent: 23.2,
@@ -31,10 +35,9 @@ const plans = [
     description: 'For growing businesses with recurring receivables',
     features: ['Cash flow forecasting', 'Priority collections', 'Team workflows'],
     popular: true,
-    priceIdMonthly: 'pri_01m1kradmabmq0w03jnjx3sfpq',
-    priceIdAnnual: 'pri_01m1krdpsbtvtyv28n0mdzdnsc',
   },
   {
+    id: 'enterprise',
     title: 'Enterprise',
     priceMonthly: 79,
     priceAnnualMonthlyEquivalent: 63.2,
@@ -43,47 +46,53 @@ const plans = [
     description: 'For finance teams that need scale and automation',
     features: ['Dedicated onboarding', 'Custom integrations', 'Priority support'],
     popular: false,
-    priceIdMonthly: 'pri_01m1krf9z8r3txz5q8ch8rn906',
-    priceIdAnnual: 'pri_01m1krge6jgxvdtsvptf8cnpg2',
   },
 ];
 
-const PricingPage = () => {
+export const PricingPage: React.FC = () => {
   const [isAnnual, setIsAnnual] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const { user } = useAppData();
 
-  useEffect(() => {
-    // تحميل مكتبة Paddle برمجياً لبيئة Vite
-    const script = document.createElement('script');
-    script.src = 'https://cdn.paddle.com/paddle/v2/paddle.js';
-    script.async = true;
-    script.onload = () => {
-      if (window.Paddle) {
-        window.Paddle.Initialize({
-          token: PADDLE_CLIENT_TOKEN,
-        });
-      }
-    };
-    document.body.appendChild(script);
+  const handleCheckout = async (plan: Plan) => {
+    if (!agreedToTerms) {
+      alert('Please agree to the Terms of Service and Refund Policy to proceed.');
+      return;
+    }
 
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, []);
+    const amount = isAnnual ? plan.annualTotal : plan.priceMonthly;
+    setLoadingPlan(plan.id);
 
-  const handleCheckout = (priceId: string) => {
-    if (window.Paddle) {
-      window.Paddle.Checkout.open({
-        items: [{ priceId, quantity: 1 }],
-        customer: user?.email ? { email: user.email } : undefined,
-        settings: {
-          displayMode: 'overlay',
-          theme: 'dark',
-          successUrl: `${window.location.origin}/dashboard`,
-        },
+    try {
+      const response = await fetch('/api/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: Math.round(amount * 100),
+          currency: 'USD',
+          planId: plan.id,
+          billingPeriod: isAnnual ? 'annual' : 'monthly',
+          customer: {
+            email: user?.email || 'customer@example.com',
+            first_name: user?.email?.split('@')[0] || 'Customer',
+            last_name: 'Subscriber',
+          },
+        }),
       });
-    } else {
-      console.warn('Paddle SDK is still loading...');
+
+      const data = await response.json();
+
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl;
+      } else {
+        alert(data.error || 'Failed to initialize payment.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error connecting to payment gateway.');
+    } finally {
+      setLoadingPlan(null);
     }
   };
 
@@ -95,7 +104,9 @@ const PricingPage = () => {
           <div>
             <p className="text-sm uppercase tracking-[0.3em] text-brand-300 font-semibold">Pricing Plans</p>
             <h1 className="mt-3 text-4xl font-semibold text-white">Simple plans for improving cash flow and reducing overdue exposure.</h1>
-            <p className="mt-4 max-w-2xl text-slate-400">Choose the package that fits your finance team, then start recovering cash with fewer manual follow-ups.</p>
+            <p className="mt-4 max-w-2xl text-slate-400">
+              Choose the package that fits your finance team, then start recovering cash with fewer manual follow-ups.
+            </p>
           </div>
         </div>
 
@@ -122,15 +133,36 @@ const PricingPage = () => {
         </div>
       </section>
 
+      {/* Mandatory Checkbox */}
+      <div className="max-w-xl mx-auto rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={agreedToTerms}
+            onChange={(e) => setAgreedToTerms(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-brand-500 focus:ring-brand-500 focus:ring-offset-slate-900"
+          />
+          <span className="text-sm text-slate-300">
+            I agree to the{' '}
+            <a href="/legal" target="_blank" rel="noopener noreferrer" className="text-brand-400 underline hover:text-brand-300">
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a href="/legal" target="_blank" rel="noopener noreferrer" className="text-brand-400 underline hover:text-brand-300">
+              Refund Policy
+            </a>.
+          </span>
+        </label>
+      </div>
+
       {/* Pricing Cards */}
       <section className="grid gap-6 lg:grid-cols-3">
         {plans.map((plan) => {
           const displayPrice = isAnnual ? plan.priceAnnualMonthlyEquivalent : plan.priceMonthly;
-          const targetPriceId = isAnnual ? plan.priceIdAnnual : plan.priceIdMonthly;
 
           return (
             <div
-              key={plan.title}
+              key={plan.id}
               className={`relative rounded-[2rem] p-6 shadow-xl transition-all duration-300 flex flex-col justify-between ${
                 plan.popular
                   ? 'border-2 border-brand-500 bg-slate-900 shadow-brand-500/10 lg:-translate-y-2'
@@ -146,7 +178,7 @@ const PricingPage = () => {
               <div className="space-y-6">
                 <div>
                   <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{plan.title}</p>
-                  <div className="mt-4 flex items-empty items-baseline gap-1.5">
+                  <div className="mt-4 flex items-baseline gap-1.5">
                     <span className="text-4xl font-semibold text-white">
                       {plan.currency}{displayPrice}
                     </span>
@@ -173,14 +205,17 @@ const PricingPage = () => {
               <div className="mt-8">
                 <button
                   type="button"
-                  onClick={() => handleCheckout(targetPriceId)}
+                  disabled={loadingPlan === plan.id}
+                  onClick={() => handleCheckout(plan)}
                   className={`inline-flex w-full items-center justify-center rounded-2xl px-4 py-3.5 text-sm font-semibold transition ${
-                    plan.popular
+                    !agreedToTerms
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      : plan.popular
                       ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/30 hover:bg-brand-400'
                       : 'border border-slate-700 bg-slate-800/80 text-white hover:border-brand-500 hover:bg-slate-800'
                   }`}
                 >
-                  Choose {plan.title}
+                  {loadingPlan === plan.id ? 'Processing...' : `Choose ${plan.title}`}
                 </button>
               </div>
             </div>
@@ -192,15 +227,21 @@ const PricingPage = () => {
       <section className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-[2rem] border border-slate-800/90 bg-slate-950/80 p-8 shadow-xl shadow-slate-950/20">
           <h2 className="text-xl font-semibold text-white">Why Cash Collection Agent?</h2>
-          <p className="mt-4 text-sm text-slate-400">Stop letting overdue invoices erode working capital. Give your finance team the tools to turn receivables into reliable cash flow.</p>
+          <p className="mt-4 text-sm text-slate-400">
+            Stop letting overdue invoices erode working capital. Give your finance team the tools to turn receivables into reliable cash flow.
+          </p>
         </div>
         <div className="rounded-[2rem] border border-slate-800/90 bg-slate-950/80 p-8 shadow-xl shadow-slate-950/20">
           <h2 className="text-xl font-semibold text-white">Trusted by SMB finance teams</h2>
-          <p className="mt-4 text-sm text-slate-400">Manage customer payment risk, automate reminders, and keep forecasted cash flow aligned with real receivables.</p>
+          <p className="mt-4 text-sm text-slate-400">
+            Manage customer payment risk, automate reminders, and keep forecasted cash flow aligned with real receivables.
+          </p>
         </div>
         <div className="rounded-[2rem] border border-slate-800/90 bg-slate-950/80 p-8 shadow-xl shadow-slate-950/20">
           <h2 className="text-xl font-semibold text-white">Start with confidence</h2>
-          <p className="mt-4 text-sm text-slate-400">Launch quickly with low overhead, then scale to advanced collection workflows as your business needs evolve.</p>
+          <p className="mt-4 text-sm text-slate-400">
+            Launch quickly with low overhead, then scale to advanced collection workflows as your business needs evolve.
+          </p>
         </div>
       </section>
     </div>
