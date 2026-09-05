@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
-import { currencies } from '../lib/currencies';
+import { currencies, resolveCurrencyCode } from '../lib/currencies';
 
 const SETTINGS_STORAGE_KEY = 'orderflow_app_settings_v1';
 
@@ -16,7 +16,8 @@ const SettingsPage = () => {
     try {
       const localSaved = localStorage.getItem(SETTINGS_STORAGE_KEY);
       if (localSaved) {
-        return JSON.parse(localSaved);
+        const parsed = JSON.parse(localSaved);
+        return { ...parsed, currency: resolveCurrencyCode(parsed.currency) };
       }
     } catch {
       // ignore
@@ -24,7 +25,7 @@ const SettingsPage = () => {
     return {
       workspaceName: settings?.workspaceName || 'Cash Collection Agent',
       timezone: settings?.timezone || 'UTC-5 Eastern Time',
-      currency: (settings as any)?.currency || 'USD ($)',
+      currency: resolveCurrencyCode((settings as any)?.currency),
       notificationEmail: (settings as any)?.notificationEmail || 'karim.adel@orderflow.tech',
       largeInvoiceThreshold: (settings as any)?.largeInvoiceThreshold || '5000',
       invoiceReminders: settings?.invoiceReminders ?? true,
@@ -40,7 +41,8 @@ const SettingsPage = () => {
     try {
       const localSaved = localStorage.getItem(SETTINGS_STORAGE_KEY);
       if (localSaved) {
-        setForm(JSON.parse(localSaved));
+        const parsed = JSON.parse(localSaved);
+        setForm({ ...parsed, currency: resolveCurrencyCode(parsed.currency) });
       }
     } catch {
       // ignore
@@ -50,18 +52,11 @@ const SettingsPage = () => {
   const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    // 1. حفظ الإعدادات في Context
+    // updateSettings (في AppDataContext) هي المسؤولة الوحيدة عن: تحديث الـ state، الحفظ في
+    // localStorage، وإطلاق حدث orderflow_currency_updated. كانت هذه الشاشة تكرر نفس الخطوات
+    // الثلاث بنفسها بعد استدعائها مباشرة، فيُطلَق الحدث مرتين لكل حفظة واحدة بلا أي فائدة -
+    // مسار واحد واضح هنا أضمن ويقلل احتمال أي تعارض مستقبلي.
     updateSettings(form as any);
-
-    // 2. الحفظ الثابت في LocalStorage
-    try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(form));
-      localStorage.setItem('orderflow_active_currency', form.currency);
-      // إطلاق حدث تحديث لكل الصفحات
-      window.dispatchEvent(new Event('orderflow_currency_updated'));
-    } catch {
-      // ignore
-    }
 
     setMessage('Settings saved successfully. Reporting currency updated across dashboards.');
     setTimeout(() => setMessage(''), 4000);
@@ -110,7 +105,7 @@ const SettingsPage = () => {
                     className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-brand-500"
                   >
                     {currencies.map((c) => (
-                      <option key={c.code} value={c.label}>{c.label}</option>
+                      <option key={c.code} value={c.code}>{c.label}</option>
                     ))}
                   </select>
                   <span className="block text-xs text-slate-500">

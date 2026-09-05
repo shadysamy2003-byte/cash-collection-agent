@@ -27,6 +27,25 @@ export const currencyByCode = (code: string | undefined | null): CurrencyDefinit
 export const currencyByLabel = (label: string | undefined | null): CurrencyDefinition =>
   currencies.find((c) => c.label === label) || currencies.find((c) => c.code === DEFAULT_CURRENCY_CODE)!;
 
+/**
+ * يحوّل أي قيمة عملة محفوظة (كود نظيف مثل "EGP"، أو تسمية قديمة مثل "EGP (ج.م)"، أو حتى
+ * نص انجرف/تغيّر شكله بأي طريقة) إلى كود عملة صالح دائمًا.
+ *
+ * هذه هي نقطة التحويل الوحيدة التي يجب أن يمر منها settings.currency قبل استخدامه في أي
+ * منطق (جلب سعر، اختيار رمز، إلخ). المطابقة بالتسمية الكاملة (label) هشّة بطبيعتها: أي
+ * اختلاف بسيط - رمز يونيكود مختلف الشكل لنفس العملة، مسافة زائدة، أو تعديل يدوي لاحق على
+ * نص القائمة المنسدلة في مكان واحد فقط دون الآخر - يجعل المطابقة تفشل صامتة وترتد دائمًا
+ * للعملة الافتراضية (USD) بغض النظر عمّا اختاره المستخدم فعليًا. المطابقة بالكود (ISO) لا
+ * تعاني من هذه الهشاشة لأنه نص ثابت وبسيط لا علاقة له بأي رمز أو تنسيق عرض.
+ */
+export const resolveCurrencyCode = (value: string | undefined | null): CurrencyCode => {
+  const byCode = currencies.find((c) => c.code === value);
+  if (byCode) return byCode.code;
+  const byLabel = currencies.find((c) => c.label === value);
+  if (byLabel) return byLabel.code;
+  return DEFAULT_CURRENCY_CODE;
+};
+
 // خريطة رموز محفوظة بنفس الشكل القديم (مفتاحها label) لأي كود يستوردها بهذا الاسم.
 export const currencySymbols: Record<string, string> = currencies.reduce((acc, c) => {
   acc[c.label] = c.symbol;

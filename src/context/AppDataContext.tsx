@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { getLiveRate, ExchangeRateUnavailableError, type ExchangeRateSource, type LiveRateResult } from '../lib/exchangeRate';
-import { currencyByCode, currencyByLabel, currencySymbols, parseCurrencyAmount as parseCurrency } from '../lib/currencies';
+import { currencyByCode, resolveCurrencyCode, currencySymbols, parseCurrencyAmount as parseCurrency } from '../lib/currencies';
 import type { AssistantMessage, Customer, Invoice, NotificationItem, Settings, User } from '../types';
 import { Toast, ToastMessage } from '../components/Toast';
 
@@ -102,7 +102,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return {
       workspaceName: 'Cash Collection Agent',
       timezone: 'UTC-5 Eastern Time',
-      currency: 'USD ($)',
+      currency: 'USD',
       notificationEmail: 'karim.adel@orderflow.tech',
       largeInvoiceThreshold: '5000',
       invoiceReminders: true,
@@ -113,16 +113,21 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const activeCurrencyKey = (settings as any)?.currency || 'USD ($)';
-  const currencySymbol = currencySymbols[activeCurrencyKey] || '$';
+  // نقطة التحويل الوحيدة: أي قيمة محفوظة في settings.currency (كود نظيف، أو تسمية قديمة من
+  // قبل هذا التصحيح، أو حتى نص انجرف شكله بأي طريقة) تمر من هنا فتصبح كودًا صالحًا دائمًا.
+  // هذا هو الإصلاح الجذري: المطابقة كانت تعتمد سابقًا على تطابق التسمية الكاملة نصيًا حرفًا
+  // بحرف (مثل "SAR (﷼)")، وأي اختلاف بسيط في شكل الرمز أو تعديل يدوي لاحق في مكان واحد فقط
+  // يجعلها ترتد صامتة لعملة USD الافتراضية بغض النظر عمّا اختاره المستخدم فعليًا.
+  const reportingCurrencyCode = resolveCurrencyCode((settings as any)?.currency);
+  const currencySymbol = currencyByCode(reportingCurrencyCode).symbol;
 
-  // جلب سعر حي لعملة التقارير عند التحميل، وكل ما تغيّرت من الإعدادات. عرض فقط (read-only)
-  // ولا يُستخدم مطلقًا لحساب أو حفظ أي فاتورة.
+  // جلب سعر حي لعملة التقارير عند التحميل، وكل ما تغيّرت من الإعدادات (الاعتماد هنا على
+  // الكود مباشرة، لا التسمية، فيعيد جلب السعر فورًا لأي عملة من الست دون أي مطابقة نصية
+  // هشّة). عرض فقط (read-only) ولا يُستخدم مطلقًا لحساب أو حفظ أي فاتورة.
   useEffect(() => {
     let cancelled = false;
-    const reportingCode = currencyByLabel(activeCurrencyKey).code;
 
-    getLiveRate(reportingCode)
+    getLiveRate(reportingCurrencyCode)
       .then((result) => {
         if (cancelled) return;
         setReportingRate(result.rate);
@@ -137,7 +142,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       cancelled = true;
     };
-  }, [activeCurrencyKey]);
+  }, [reportingCurrencyCode]);
 
   const formatCurrency = useMemo(() => {
     return (amountInUSD: number) => {
