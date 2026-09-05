@@ -1,16 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
+import { currencies } from '../lib/currencies';
 
 const SETTINGS_STORAGE_KEY = 'orderflow_app_settings_v1';
 
-export const currencySymbols: Record<string, string> = {
-  'USD ($)': '$',
-  'EUR (€)': '€',
-  'GBP (£)': '£',
-  'SAR (﷼)': 'SAR ',
-  'AED (د.إ)': 'AED ',
-  'EGP (ج.م)': 'EGP '
-};
+// محفوظ هنا للتوافق الخلفي: أي كود يستورد currencySymbols من هذا الملف تحديدًا يستمر في
+// العمل، لكن المصدر الفعلي الوحيد أصبح lib/currencies.ts (وهو ما أصلح تعارض رمز EGP بين
+// هذا الملف وAppDataContext.tsx سابقًا).
+export { currencySymbols } from '../lib/currencies';
 
 const SettingsPage = () => {
   const { settings, updateSettings } = useAppData();
@@ -66,7 +63,7 @@ const SettingsPage = () => {
       // ignore
     }
 
-    setMessage('Settings saved successfully. Active currency updated across workspace.');
+    setMessage('Settings saved successfully. Reporting currency updated across dashboards.');
     setTimeout(() => setMessage(''), 4000);
   };
 
@@ -106,19 +103,19 @@ const SettingsPage = () => {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block space-y-2 text-sm">
-                  <span>Default Currency</span>
+                  <span>Reporting Currency</span>
                   <select
                     value={form.currency}
                     onChange={(event) => setForm((prev: any) => ({ ...prev, currency: event.target.value }))}
                     className="w-full rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-brand-500"
                   >
-                    <option value="USD ($)">USD ($)</option>
-                    <option value="EUR (€)">EUR (€)</option>
-                    <option value="GBP (£)">GBP (£)</option>
-                    <option value="SAR (﷼)">SAR (﷼)</option>
-                    <option value="AED (د.إ)">AED (د.إ)</option>
-                    <option value="EGP (ج.م)">EGP (ج.م)</option>
+                    {currencies.map((c) => (
+                      <option key={c.code} value={c.label}>{c.label}</option>
+                    ))}
                   </select>
+                  <span className="block text-xs text-slate-500">
+                    Used only for dashboard totals and reports. Each invoice keeps its own currency and exchange rate regardless of this setting.
+                  </span>
                 </label>
 
                 <label className="block space-y-2 text-sm">

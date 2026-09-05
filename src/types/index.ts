@@ -17,6 +17,8 @@ export type InvoiceStatus =
 
 export type PriorityLabel = 'High' | 'Medium' | 'Low';
 
+export type ExchangeRateSourceLabel = 'live' | 'cached_fallback';
+
 export type Invoice = {
   id: string;
   invoiceNumber: string;
@@ -32,6 +34,14 @@ export type Invoice = {
   priorityReason?: string;
   contacted?: boolean;
   followUpOn?: string;
+  // حقول العملة الحية: العملة الأصلية لهذه الفاتورة تحديدًا، والمبلغ الخام بالدولار
+  // (عملة التخزين الأساسية)، وسعر الصرف الذي استُخدم فعليًا وقت إنشائها، ومتى ومن أين
+  // جاء ذلك السعر. تُحفظ كلها مع كل فاتورة على حدة ولا تُعاد حسابها بسعر اليوم أبدًا.
+  currency?: string;
+  amountUSD?: number;
+  exchangeRate?: number;
+  exchangeRateFetchedAt?: string;
+  exchangeRateSource?: ExchangeRateSourceLabel;
   // compatibility helpers
   customer?: string;
   date?: string;
@@ -149,6 +159,11 @@ export type Settings = {
   orderAlerts?: boolean;
   inventoryWarnings?: boolean;
   shippingUpdates?: boolean;
+  // كانت هذه الحقول تُستخدم فعليًا عبر "as any" بدون تعريف رسمي في النوع. أُضيفت هنا فقط
+  // لإزالة الحاجة لذلك، بدون أي تغيير في القيم أو السلوك الفعلي للإعدادات.
+  currency?: string;
+  notificationEmail?: string;
+  largeInvoiceThreshold?: string;
 };
 
 export type User = {

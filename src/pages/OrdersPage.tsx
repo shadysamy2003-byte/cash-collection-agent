@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
+import { currencies, currencyByCode, parseCurrencyAmount as parseAmount, DEFAULT_CURRENCY_CODE } from '../lib/currencies';
 import type { Invoice, InvoiceStatus, Customer } from '../types';
 
 const invoiceStatuses: InvoiceStatus[] = ['Draft', 'Sent', 'Due Soon', 'Overdue', 'Partially Paid', 'Paid'];
@@ -23,22 +24,13 @@ interface InvoiceFormState {
   customerId: string;
   customerName: string;
   amount: string;
+  currency: string;
   issueDate: string;
   dueDate: string;
   status: InvoiceStatus;
   paymentDate: string;
   notes: string;
 }
-
-const parseAmount = (value: unknown): number => {
-  if (typeof value === 'number') return Number.isNaN(value) ? 0 : value;
-  if (typeof value === 'string') {
-    const cleaned = value.replace(/[^0-9.-]/g, '');
-    const parsed = parseFloat(cleaned);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-};
 
 const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -253,8 +245,7 @@ const OrdersPage = () => {
     addOrder, 
     updateOrder, 
     deleteOrder,
-    addInventoryItem,
-    formatCurrency
+    addInventoryItem
   } = useAppData();
 
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -285,12 +276,13 @@ const OrdersPage = () => {
   const [newCustEmail, setNewCustEmail] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('');
 
-  // نموذج الفاتورة يبدأ خالياً تماماً
+  // نموذج الفاتورة يبدأ خالياً تماماً، بعملة افتراضية USD
   const [form, setForm] = useState<InvoiceFormState>({
     invoiceNumber: '',
     customerId: '',
     customerName: '',
     amount: '',
+    currency: DEFAULT_CURRENCY_CODE,
     issueDate: '',
     dueDate: '',
     status: 'Sent' as InvoiceStatus,
@@ -337,7 +329,7 @@ const OrdersPage = () => {
       })
       .sort((a, b) => {
         const direction = sortDirection === 'asc' ? 1 : -1;
-        if (sortKey === 'amount') return (parseAmount(a.amount) - parseAmount(b.amount)) * direction;
+        if (sortKey === 'amount') return ((a.amountUSD ?? parseAmount(a.amount)) - (b.amountUSD ?? parseAmount(b.amount))) * direction;
         if (sortKey === 'dueDate') return (new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()) * direction;
         if (sortKey === 'status') return String(a.status).localeCompare(String(b.status)) * direction;
         return String(a.customerName).localeCompare(String(b.customerName)) * direction;
@@ -350,6 +342,7 @@ const OrdersPage = () => {
       customerId: '',
       customerName: '',
       amount: '',
+      currency: DEFAULT_CURRENCY_CODE,
       issueDate: '',
       dueDate: '',
       status: 'Sent',
@@ -358,7 +351,7 @@ const OrdersPage = () => {
     });
   };
 
-  const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const rawVal = parseAmount(form.amount);
 
@@ -395,6 +388,7 @@ const OrdersPage = () => {
       customerId,
       customerName: form.customerName.trim(),
       amount: String(rawVal),
+      currency: form.currency,
       issueDate: form.issueDate,
       dueDate: form.dueDate,
       status: form.status,
@@ -406,16 +400,18 @@ const OrdersPage = () => {
       followUpOn: editing?.followUpOn
     };
 
-    if (editing) {
-      updateOrder({ ...editing, ...payload });
-      setMessage('Invoice updated successfully.');
-    } else {
-      addOrder(payload);
-      setMessage('Invoice added successfully.');
-    }
+    // ننتظر نتيجة الحفظ الفعلية قبل تفريغ النموذج أو إظهار رسالة نجاح - لو تعذّر جلب سعر
+    // الصرف الحي أو حصل خطأ آخر، يبقى كلام المستخدم في النموذج بدل ما يضيع، والرسالة
+    // المعروضة تعكس الحقيقة الفعلية بدل رسالة نجاح متفائلة تظهر مع تنبيه فشل في نفس اللحظة.
+    const succeeded = editing
+      ? await updateOrder({ ...editing, ...payload })
+      : await addOrder(payload);
 
-    resetForm();
-    setEditing(null);
+    if (succeeded) {
+      setMessage(editing ? 'Invoice updated successfully.' : 'Invoice added successfully.');
+      resetForm();
+      setEditing(null);
+    }
   };
 
   const handleEdit = (invoice: Invoice) => {
@@ -426,6 +422,7 @@ const OrdersPage = () => {
       customerId: invoice.customerId,
       customerName: invoice.customerName,
       amount: String(parseAmount(invoice.amount)),
+      currency: invoice.currency || DEFAULT_CURRENCY_CODE,
       issueDate: invoice.issueDate,
       dueDate: invoice.dueDate,
       status: invoice.status,
@@ -481,7 +478,10 @@ const OrdersPage = () => {
     setPaymentDate(formatDateInput(new Date()));
   };
 
-  const handleRecordPaymentSubmit = (e: React.FormEvent) => {
+  // تسجيل دفعة: يعرض المبلغ برمز عملة الفاتورة نفسها مباشرة، بدل تمريره عبر formatCurrency
+  // (الذي يحوّل بعملة التقارير العامة) - كان هذا يسبب تحويلاً مزدوجًا وأرقامًا خاطئة تمامًا
+  // تُحفظ بشكل دائم داخل ملاحظات التدقيق. كما ننتظر نتيجة الحفظ الفعلية قبل إغلاق النافذة.
+  const handleRecordPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentModalInvoice) return;
 
@@ -493,9 +493,12 @@ const OrdersPage = () => {
       return;
     }
 
+    const invoiceCurrencyDef = currencyByCode(paymentModalInvoice.currency);
+    const paidDisplay = `${invoiceCurrencyDef.symbol}${paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
     const isFullSettlement = paid >= total;
     const newStatus: InvoiceStatus = isFullSettlement ? 'Paid' : 'Partially Paid';
-    const auditNote = `[Payment Logged: ${formatCurrency(paid)} via ${paymentMethod}${
+    const auditNote = `[Payment Logged: ${paidDisplay} via ${paymentMethod}${
       paymentReference ? ` (Ref: ${paymentReference})` : ''
     } on ${paymentDate}]`;
     const updatedNotes = paymentModalInvoice.notes ? `${paymentModalInvoice.notes}\n${auditNote}` : auditNote;
@@ -507,11 +510,13 @@ const OrdersPage = () => {
       notes: updatedNotes
     };
 
-    updateOrder(updatedInv);
-    setMessage(`Payment of ${formatCurrency(paid)} recorded for ${paymentModalInvoice.invoiceNumber}.`);
-    setPaymentModalInvoice(null);
-    setReceiptInvoice(updatedInv);
-    setTimeout(() => setMessage(''), 4000);
+    const succeeded = await updateOrder(updatedInv);
+    if (succeeded) {
+      setMessage(`Payment of ${paidDisplay} recorded for ${paymentModalInvoice.invoiceNumber}.`);
+      setPaymentModalInvoice(null);
+      setReceiptInvoice(updatedInv);
+      setTimeout(() => setMessage(''), 4000);
+    }
   };
 
   const handleBankCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -865,17 +870,31 @@ const OrdersPage = () => {
               )}
             </div>
 
-            <label className="block text-sm text-slate-300">
-              Amount
-              <input
-                type="number"
-                step="0.01"
-                value={form.amount}
-                onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, amount: event.target.value }))}
-                placeholder="0.00"
-                className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
-              />
-            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm text-slate-300">
+                Amount
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, amount: event.target.value }))}
+                  placeholder="0.00"
+                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white placeholder-slate-500/50 outline-none focus:border-brand-500 transition"
+                />
+              </label>
+              <label className="block text-sm text-slate-300">
+                Currency
+                <select
+                  value={form.currency}
+                  onChange={(event) => setForm((prev: InvoiceFormState) => ({ ...prev, currency: event.target.value }))}
+                  className="mt-2 w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-white outline-none focus:border-brand-500"
+                >
+                  {currencies.map((c) => (
+                    <option key={c.code} value={c.code}>{c.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -1058,6 +1077,13 @@ const OrdersPage = () => {
               <p className="mt-3 text-lg font-semibold text-white">{selectedInvoice.dueDate || '—'}</p>
             </div>
           </div>
+          {selectedInvoice.currency && selectedInvoice.exchangeRate !== undefined && (
+            <p className="mt-4 text-xs text-slate-500">
+              Recorded in {selectedInvoice.currency} at a rate of {selectedInvoice.exchangeRate} to 1 USD
+              {selectedInvoice.exchangeRateFetchedAt ? ` · fetched ${new Date(selectedInvoice.exchangeRateFetchedAt).toLocaleString()}` : ''}
+              {selectedInvoice.exchangeRateSource === 'cached_fallback' ? ' · cached rate used due to a temporary API issue' : ''}
+            </p>
+          )}
           <div className="mt-6 flex flex-wrap gap-3">
             {selectedInvoice.status === 'Paid' && (
               <button
