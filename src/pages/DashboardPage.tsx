@@ -10,19 +10,20 @@ const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
 type AmountSizeStep = { maxLength: number; className: string };
 
-// درجات تصغير الخط للبطاقات الإحصائية الرئيسية (تبدأ من text-2xl)
+// درجات تصغير الخط للبطاقات الإحصائية الرئيسية (تبدأ من text-2xl). أقل من 10 أحرف تبقى
+// text-2xl، وابتداءً من 10-12 حرفًا تتدرج للأصغر تلقائيًا حتى النصوص الطويلة جدًا.
 const DEFAULT_AMOUNT_SIZE_STEPS: AmountSizeStep[] = [
-  { maxLength: 10, className: 'text-2xl' },
-  { maxLength: 13, className: 'text-xl' },
-  { maxLength: 17, className: 'text-lg' },
-  { maxLength: 22, className: 'text-base' },
+  { maxLength: 9, className: 'text-2xl' },
+  { maxLength: 12, className: 'text-xl' },
+  { maxLength: 15, className: 'text-lg' },
+  { maxLength: 19, className: 'text-base' },
 ];
 
 // درجات أصغر لبطاقات ملخص Aging (تبدأ من text-lg أصلاً، فهي أضيق وأقل أهمية بصريًا)
 const COMPACT_AMOUNT_SIZE_STEPS: AmountSizeStep[] = [
-  { maxLength: 10, className: 'text-lg' },
-  { maxLength: 14, className: 'text-base' },
-  { maxLength: 19, className: 'text-sm' },
+  { maxLength: 9, className: 'text-lg' },
+  { maxLength: 13, className: 'text-base' },
+  { maxLength: 17, className: 'text-sm' },
 ];
 
 const getAmountTextSizeClass = (value: string, steps: AmountSizeStep[], fallbackClassName: string): string => {
@@ -31,17 +32,18 @@ const getAmountTextSizeClass = (value: string, steps: AmountSizeStep[], fallback
 };
 
 /**
- * عرض مبلغ داخل بطاقة بحجم خط يتصاغر تلقائيًا مع طول الرقم المُنسَّق (عملات/مبالغ كبيرة
- * تُعرض بخط أصغر تلقائيًا بدل الخروج عن حدود البطاقة). truncate هنا سقف أمان مطلق: حتى لو
- * تجاوز الرقم أصغر درجة متاحة، يُقصّ بأمان بدل التمدد فوق البطاقة المجاورة، مع بقاء الرقم
- * الكامل متاحًا دائمًا كـ tooltip عند الوقوف عليه بالماوس.
+ * عرض مبلغ داخل بطاقة بحجم خط يتصاغر تلقائيًا مع طول الرقم المُنسَّق فعليًا - بلا أي اقتطاع
+ * أو نقاط (...) إطلاقًا، فالرقم المالي الكامل يبقى ظاهرًا دائمًا كما هو. whitespace-nowrap
+ * صريحة تمنع الالتفاف لسطرين. ملحوظة مهمة: لا يوجد هنا "سقف أمان" يقصّ النص كحل أخير كما كان
+ * سابقًا (truncate) - الاعتماد الكامل على درجات التصغير نفسها لمنع الخروج عن حدود البطاقة،
+ * وآخر درجة (fallbackClassName) مضبوطة على أصغر حجم متاح لتغطية النصوص الطويلة جدًا.
  */
 const StatAmount = ({
   value,
   className = 'mt-3',
   colorClassName = 'text-white',
   steps = DEFAULT_AMOUNT_SIZE_STEPS,
-  fallbackClassName = 'text-xs',
+  fallbackClassName = 'text-sm',
 }: {
   value: string;
   className?: string;
@@ -51,7 +53,7 @@ const StatAmount = ({
 }) => (
   <p
     title={value}
-    className={`truncate font-bold ${className} ${colorClassName} ${getAmountTextSizeClass(value, steps, fallbackClassName)}`}
+    className={`whitespace-nowrap font-bold ${className} ${colorClassName} ${getAmountTextSizeClass(value, steps, fallbackClassName)}`}
   >
     {value}
   </p>
@@ -580,10 +582,11 @@ const DashboardPage = () => {
                     value={selectedInvoice.amount as string}
                     className="mt-1"
                     steps={[
-                      { maxLength: 14, className: 'text-xl' },
-                      { maxLength: 18, className: 'text-lg' },
-                      { maxLength: 24, className: 'text-base' },
+                      { maxLength: 13, className: 'text-xl' },
+                      { maxLength: 17, className: 'text-lg' },
+                      { maxLength: 21, className: 'text-base' },
                     ]}
+                    fallbackClassName="text-sm"
                   />
                   <p className="text-xs text-slate-400 mt-2">Due Date: {selectedInvoice.dueDate}</p>
                   <p className="text-xs text-slate-300 mt-2">Notes: {selectedInvoice.notes}</p>
