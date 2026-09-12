@@ -8,6 +8,55 @@ const today = new Date();
 
 const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
+type AmountSizeStep = { maxLength: number; className: string };
+
+// درجات تصغير الخط للبطاقات الإحصائية الرئيسية (تبدأ من text-2xl)
+const DEFAULT_AMOUNT_SIZE_STEPS: AmountSizeStep[] = [
+  { maxLength: 10, className: 'text-2xl' },
+  { maxLength: 13, className: 'text-xl' },
+  { maxLength: 17, className: 'text-lg' },
+  { maxLength: 22, className: 'text-base' },
+];
+
+// درجات أصغر لبطاقات ملخص Aging (تبدأ من text-lg أصلاً، فهي أضيق وأقل أهمية بصريًا)
+const COMPACT_AMOUNT_SIZE_STEPS: AmountSizeStep[] = [
+  { maxLength: 10, className: 'text-lg' },
+  { maxLength: 14, className: 'text-base' },
+  { maxLength: 19, className: 'text-sm' },
+];
+
+const getAmountTextSizeClass = (value: string, steps: AmountSizeStep[], fallbackClassName: string): string => {
+  const match = steps.find((step) => value.length <= step.maxLength);
+  return match ? match.className : fallbackClassName;
+};
+
+/**
+ * عرض مبلغ داخل بطاقة بحجم خط يتصاغر تلقائيًا مع طول الرقم المُنسَّق (عملات/مبالغ كبيرة
+ * تُعرض بخط أصغر تلقائيًا بدل الخروج عن حدود البطاقة). truncate هنا سقف أمان مطلق: حتى لو
+ * تجاوز الرقم أصغر درجة متاحة، يُقصّ بأمان بدل التمدد فوق البطاقة المجاورة، مع بقاء الرقم
+ * الكامل متاحًا دائمًا كـ tooltip عند الوقوف عليه بالماوس.
+ */
+const StatAmount = ({
+  value,
+  className = 'mt-3',
+  colorClassName = 'text-white',
+  steps = DEFAULT_AMOUNT_SIZE_STEPS,
+  fallbackClassName = 'text-xs',
+}: {
+  value: string;
+  className?: string;
+  colorClassName?: string;
+  steps?: AmountSizeStep[];
+  fallbackClassName?: string;
+}) => (
+  <p
+    title={value}
+    className={`truncate font-bold ${className} ${colorClassName} ${getAmountTextSizeClass(value, steps, fallbackClassName)}`}
+  >
+    {value}
+  </p>
+);
+
 const DashboardPage = () => {
   const {
     metrics,
@@ -203,27 +252,27 @@ const DashboardPage = () => {
 
         {/* Metrics Overview Grid */}
         <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6 xl:col-span-1">
+          <div className="min-w-0 rounded-3xl border border-slate-800 bg-slate-950/80 p-6 xl:col-span-1">
             <p className="text-xs uppercase tracking-wider text-slate-400">Total Outstanding</p>
-            <p className="mt-3 text-2xl font-bold text-white">{formatCurrency(reportData?.outstandingReceivables ?? 0)}</p>
+            <StatAmount value={formatCurrency(reportData?.outstandingReceivables ?? 0)} />
             <p className="mt-2 text-xs text-slate-500">Unpaid invoices on books</p>
           </div>
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
+          <div className="min-w-0 rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
             <p className="text-xs uppercase tracking-wider text-rose-400">Overdue Amount</p>
-            <p className="mt-3 text-2xl font-bold text-rose-400">{formatCurrency(metrics?.overdue ?? 0)}</p>
+            <StatAmount value={formatCurrency(metrics?.overdue ?? 0)} colorClassName="text-rose-400" />
             <p className="mt-2 text-xs text-amber-300/80">Needs earliest outreach</p>
           </div>
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
+          <div className="min-w-0 rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
             <p className="text-xs uppercase tracking-wider text-amber-400">Due in 7 Days</p>
-            <p className="mt-3 text-2xl font-bold text-white">{formatCurrency(metrics?.dueSoon ?? 0)}</p>
+            <StatAmount value={formatCurrency(metrics?.dueSoon ?? 0)} />
             <p className="mt-2 text-xs text-slate-500">Coming due within a week</p>
           </div>
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
+          <div className="min-w-0 rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
             <p className="text-xs uppercase tracking-wider text-brand-300">Expected Inflow (30d)</p>
-            <p className="mt-3 text-2xl font-bold text-white">{formatCurrency(expectedCashInflow)}</p>
+            <StatAmount value={formatCurrency(expectedCashInflow)} />
             <p className="mt-2 text-xs text-slate-500">Projected receivables</p>
           </div>
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
+          <div className="min-w-0 rounded-3xl border border-slate-800 bg-slate-950/80 p-6">
             <p className="text-xs uppercase tracking-wider text-emerald-400">Collection Rate</p>
             <p className="mt-3 text-2xl font-bold text-white">{metrics?.collectionRate ?? 0}%</p>
             <p className="mt-2 text-xs text-slate-500">Collected on schedule</p>
@@ -525,15 +574,23 @@ const DashboardPage = () => {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               {selectedInvoice && (
-                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4">
+                <div className="min-w-0 rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4">
                   <p className="text-xs text-slate-400 uppercase">Invoice #{selectedInvoice.invoiceNumber}</p>
-                  <p className="text-xl font-bold text-white mt-1">{selectedInvoice.amount}</p>
+                  <StatAmount
+                    value={selectedInvoice.amount as string}
+                    className="mt-1"
+                    steps={[
+                      { maxLength: 14, className: 'text-xl' },
+                      { maxLength: 18, className: 'text-lg' },
+                      { maxLength: 24, className: 'text-base' },
+                    ]}
+                  />
                   <p className="text-xs text-slate-400 mt-2">Due Date: {selectedInvoice.dueDate}</p>
                   <p className="text-xs text-slate-300 mt-2">Notes: {selectedInvoice.notes}</p>
                 </div>
               )}
               {selectedCustomer && (
-                <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4">
+                <div className="min-w-0 rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4">
                   <p className="text-xs text-slate-400 uppercase">Customer Profile</p>
                   <p className="text-lg font-semibold text-white mt-1">{selectedCustomer.name}</p>
                   <p className="text-xs text-amber-300 mt-1">Reliability: {selectedCustomer.reliability}</p>
@@ -548,9 +605,9 @@ const DashboardPage = () => {
             وكل بند بعدها كان منزاحًا بمقدار خانة واحدة) وبعملة الدولار الثابتة فقط. */}
         <div className="mt-8 grid gap-4 sm:grid-cols-4">
           {(reportData?.aging ?? []).map((bucket: { label: string; total: string; count: number }) => (
-            <div key={bucket.label} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <div key={bucket.label} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950 p-4">
               <p className="text-xs text-slate-400">{bucket.label}</p>
-              <p className="mt-1 text-lg font-bold text-white">{bucket.total}</p>
+              <StatAmount value={bucket.total} className="mt-1" steps={COMPACT_AMOUNT_SIZE_STEPS} fallbackClassName="text-xs" />
             </div>
           ))}
         </div>
