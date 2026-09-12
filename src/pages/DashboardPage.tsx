@@ -1,18 +1,10 @@
 import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { useAppData } from '../context/AppDataContext';
+import { currencies, DEFAULT_CURRENCY_CODE } from '../lib/currencies';
 import type { Invoice, Customer } from '../types';
 
 const today = new Date();
-
-const parseCurrency = (value: unknown) => {
-  if (typeof value === 'number') return Number.isNaN(value) ? 0 : value;
-  if (typeof value === 'string') return Number(value.replace(/[^0-9.-]+/g, '')) || 0;
-  return 0;
-};
-
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
 
 const formatDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -25,6 +17,7 @@ const DashboardPage = () => {
     customerInsights,
     reportData,
     forecastData,
+    formatCurrency,
     addOrder,
     updateOrder,
     updateOrderStatus,
@@ -41,6 +34,7 @@ const DashboardPage = () => {
   const [newInvoiceData, setNewInvoiceData] = useState({
     customerId: customers[0]?.id ?? '',
     amount: '3200',
+    currency: DEFAULT_CURRENCY_CODE as string,
     issueDate: formatDateInput(today),
     dueDate: formatDateInput(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 21)),
     status: 'Sent' as Invoice['status'],
@@ -71,32 +65,17 @@ const DashboardPage = () => {
     return Math.min(100, Math.round(average));
   }, [customerInsights]);
 
-  const agingBuckets = useMemo(
-    () =>
-      invoices.reduce(
-        (acc, invoice) => {
-          if (invoice.status === 'Paid') return acc;
-          const due = new Date(`${invoice.dueDate}T00:00:00`);
-          const delta = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
-          const amount = parseCurrency(invoice.amount);
-
-          if (delta < 0) return { ...acc, '0-30': acc['0-30'] + amount };
-          if (delta <= 30) return { ...acc, '31-60': acc['31-60'] + amount };
-          if (delta <= 60) return { ...acc, '61-90': acc['61-90'] + amount };
-          return { ...acc, '90+': acc['90+'] + amount };
-        },
-        { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
-      ),
-    [invoices]
-  );
-
+  // مبني الآن على المبلغ الخام بالدولار (amountUSD) بدل تحليل النص المُنسَّق بعملة كل فاتورة
+  // على حدة - جمع نصوص مُنسَّقة بعملات مختلفة كان يخلط وحدات غير متجانسة معًا (مثلاً 100
+  // دولار + 5000 جنيه كأنهما نفس الرقم). formatCurrency هنا هي دالة الـ Context الحية، فتعكس
+  // عملة التقارير الحالية فورًا بدل $ ثابتة.
   const forecast = useMemo(() => {
     return Array.from({ length: 30 }).map((_, index) => {
       const date = new Date(today.getTime() + index * 24 * 60 * 60 * 1000);
       const amount = invoices.reduce((sum, invoice) => {
         if (invoice.status === 'Paid') return sum;
         if (invoice.dueDate === date.toISOString().slice(0, 10)) {
-          return sum + parseCurrency(invoice.amount);
+          return sum + (invoice.amountUSD || 0);
         }
         return sum;
       }, 0);
@@ -128,7 +107,10 @@ const DashboardPage = () => {
       .sort((a, b) => {
         const direction = sortDirection === 'asc' ? 1 : -1;
         if (sortKey === 'amount') {
-          return (parseCurrency(a.amount) - parseCurrency(b.amount)) * direction;
+          // مقارنة بالقيمة الخام بالدولار، لا بالنص المُنسَّق - فاتورتان بعملتين مختلفتين
+          // بنفس الشكل الرقمي (مثلاً "100.00" جنيهًا و"100.00" دولارًا) لم تكونا لتُرتَّبا
+          // بشكل صحيح لولا هذا.
+          return ((a.amountUSD ?? 0) - (b.amountUSD ?? 0)) * direction;
         }
         if (sortKey === 'dueDate') {
           return (new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()) * direction;
@@ -169,7 +151,9 @@ const DashboardPage = () => {
     XLSX.writeFile(workbook, `Invoices_Export_${formatDateInput(today)}.xlsx`);
   };
 
-  const handleAddInvoice = (event: React.FormEvent<HTMLFormElement>) => {
+  // ننتظر الآن نتيجة addOrder الفعلية (بعد جلب سعر الصرف الحي) قبل إظهار رسالة نجاح أو إخفاء
+  // النموذج - نفس مبدأ الأمان المُطبَّق في شاشة الفواتير: لا رسالة نجاح متفائلة لو فشل الحفظ.
+  const handleAddInvoice = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!newInvoiceData.customerId) {
       setNewInvoiceMessage('Please choose a customer.');
@@ -181,11 +165,12 @@ const DashboardPage = () => {
       return;
     }
 
-    addOrder({
+    const succeeded = await addOrder({
       invoiceNumber: `${1000 + invoices.length + 1}`,
       customerId: customer.id,
       customerName: customer.name,
-      amount: `$${parseFloat(newInvoiceData.amount || '0').toFixed(2)}`,
+      amount: newInvoiceData.amount,
+      currency: newInvoiceData.currency,
       issueDate: newInvoiceData.issueDate,
       dueDate: newInvoiceData.dueDate,
       status: newInvoiceData.status,
@@ -195,8 +180,11 @@ const DashboardPage = () => {
       contacted: false,
       followUpOn: newInvoiceData.dueDate,
     });
-    setNewInvoiceMessage('Invoice added successfully.');
-    setShowNewInvoice(false);
+
+    if (succeeded) {
+      setNewInvoiceMessage('Invoice added successfully.');
+      setShowNewInvoice(false);
+    }
   };
 
   return (
@@ -292,7 +280,7 @@ const DashboardPage = () => {
                         style={{ width: `${Math.min(100, (point.amount / Math.max(1, forecast.reduce((s, item) => Math.max(s, item.amount), 0))) * 100)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-slate-300 font-mono">${point.amount}</span>
+                    <span className="text-xs text-slate-300 font-mono">{formatCurrency(point.amount)}</span>
                   </div>
                 ))}
               </div>
@@ -382,7 +370,7 @@ const DashboardPage = () => {
         {showNewInvoice && (
           <form onSubmit={handleAddInvoice} className="mb-8 rounded-3xl border border-slate-800 bg-slate-950 p-6 space-y-4">
             <h3 className="text-lg font-semibold text-white">Create Invoice</h3>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-4">
               <select
                 value={newInvoiceData.customerId}
                 onChange={(e) => setNewInvoiceData({ ...newInvoiceData, customerId: e.target.value })}
@@ -400,6 +388,15 @@ const DashboardPage = () => {
                 className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-white outline-none"
                 required
               />
+              <select
+                value={newInvoiceData.currency}
+                onChange={(e) => setNewInvoiceData({ ...newInvoiceData, currency: e.target.value })}
+                className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-white outline-none"
+              >
+                {currencies.map((c) => (
+                  <option key={c.code} value={c.code}>{c.label}</option>
+                ))}
+              </select>
               <select
                 value={newInvoiceData.priority}
                 onChange={(e) => setNewInvoiceData({ ...newInvoiceData, priority: e.target.value as typeof newInvoiceData.priority })}
@@ -469,7 +466,10 @@ const DashboardPage = () => {
                     </button>
                   </td>
                   <td className="px-5 py-4">{inv.customerName}</td>
-                  <td className="px-5 py-4 font-bold text-white">{formatCurrency(parseCurrency(inv.amount))}</td>
+                  {/* كل فاتورة تُعرض بعملتها الخاصة كما هي (inv.amount جاهز ومُنسَّق من الـ
+                      Context بالفعل) - وليس بعملة التقارير، تمامًا كما في شاشة الفواتير. تحويلها
+                      عبر formatCurrency كان يخلط رقم فاتورة بعملة معيّنة مع رمز عملة أخرى تمامًا. */}
+                  <td className="px-5 py-4 font-bold text-white">{inv.amount}</td>
                   <td className="px-5 py-4">{inv.dueDate}</td>
                   <td className="px-5 py-4">
                     <select
@@ -527,7 +527,7 @@ const DashboardPage = () => {
               {selectedInvoice && (
                 <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4">
                   <p className="text-xs text-slate-400 uppercase">Invoice #{selectedInvoice.invoiceNumber}</p>
-                  <p className="text-xl font-bold text-white mt-1">{formatCurrency(parseCurrency(selectedInvoice.amount))}</p>
+                  <p className="text-xl font-bold text-white mt-1">{selectedInvoice.amount}</p>
                   <p className="text-xs text-slate-400 mt-2">Due Date: {selectedInvoice.dueDate}</p>
                   <p className="text-xs text-slate-300 mt-2">Notes: {selectedInvoice.notes}</p>
                 </div>
@@ -543,12 +543,14 @@ const DashboardPage = () => {
           </div>
         )}
 
-        {/* Aging Buckets Summary */}
+        {/* Aging Buckets Summary - تعتمد الآن على reportData.aging الجاهزة من الـ Context بدل
+            حساب محلي مكرَّر كان يخلط بين البنود (فاتورة غير مستحقة بعد كانت تُحسب ضمن "0-30"،
+            وكل بند بعدها كان منزاحًا بمقدار خانة واحدة) وبعملة الدولار الثابتة فقط. */}
         <div className="mt-8 grid gap-4 sm:grid-cols-4">
-          {Object.entries(agingBuckets).map(([label, amount]) => (
-            <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-              <p className="text-xs text-slate-400">{label} Days Overdue</p>
-              <p className="mt-1 text-lg font-bold text-white">{formatCurrency(amount)}</p>
+          {(reportData?.aging ?? []).map((bucket: { label: string; total: string; count: number }) => (
+            <div key={bucket.label} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+              <p className="text-xs text-slate-400">{bucket.label}</p>
+              <p className="mt-1 text-lg font-bold text-white">{bucket.total}</p>
             </div>
           ))}
         </div>
